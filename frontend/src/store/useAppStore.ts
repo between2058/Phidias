@@ -2,13 +2,13 @@ import { create } from 'zustand'
 import * as THREE from 'three'
 import { parseSceneGraph, findNodeByUuid } from '@/utils/scene'
 
-export type ModelType = 'SAM1' | 'SAM-3D' | 'Trellis' | 'P3-SAM'
+export type ModelType = 'SAM1' | 'SAM-3D' | 'Trellis' | 'P3-SAM' | null
 
 export interface Message {
     id: string
     role: 'user' | 'system'
     content: string
-    attachmentUrl?: string
+    attachments?: string[] // Base64 strings
 }
 
 export interface SceneNode {
@@ -47,11 +47,27 @@ interface AppState {
     renameNode: (id: string, newName: string) => void
     groupNodes: (ids: string[]) => void
     reparentNode: (childId: string, parentId: string) => void
+    // Generation Params
+    generationParams: {
+        seed: number
+        simplify: number
+        ss_sampling_steps: number
+        ss_guidance_strength: number
+        slat_sampling_steps: number
+        slat_guidance_strength: number
+    }
+    setGenerationParam: (key: string, value: number) => void
+
+    // Attachments
+    attachments: string[] // Base64 strings
+    addAttachment: (base64: string) => void
+    clearAttachments: () => void
+
     setTransformMode: (mode: 'translate' | 'rotate' | 'scale') => void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-    selectedModel: 'Trellis',
+    selectedModel: null,
     messages: [],
     isGenerating: false,
     currentGlbUrl: null,
@@ -60,6 +76,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     selectedNodeIds: [],
     scene: null,
     transformMode: 'translate',
+
+    // Defaults
+    generationParams: {
+        seed: 1,
+        simplify: 0.95,
+        ss_sampling_steps: 12,
+        ss_guidance_strength: 7.5,
+        slat_sampling_steps: 12,
+        slat_guidance_strength: 7.5,
+    },
+    attachments: [],
 
     setModel: (model) => set({ selectedModel: model }),
     addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
@@ -149,5 +176,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
     },
 
-    setTransformMode: (mode) => set({ transformMode: mode })
+    setTransformMode: (mode) => set({ transformMode: mode }),
+
+    setGenerationParam: (key, value) => set((state) => ({
+        generationParams: {
+            ...state.generationParams,
+            [key]: value
+        }
+    })),
+
+    addAttachment: (base64) => set((state) => ({ attachments: [...state.attachments, base64] })),
+    clearAttachments: () => set({ attachments: [] })
 }))

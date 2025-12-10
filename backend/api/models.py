@@ -4,7 +4,15 @@ from typing import Optional, List, Dict, Any
 class GenerationRequest(BaseModel):
     prompt: Optional[str] = None
     image_url: Optional[str] = None
+    images: Optional[List[str]] = None # List of Base64 strings for multi-image
     model_id: str
+    # Trellis Parameters
+    seed: int = 1
+    simplify: float = 0.95
+    ss_sampling_steps: int = 12
+    ss_guidance_strength: float = 7.5
+    slat_sampling_steps: int = 12
+    slat_guidance_strength: float = 7.5
 
 class GenerationResponse(BaseModel):
     status: str

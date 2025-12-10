@@ -127,30 +127,49 @@ function SelectionHighlighter({ scene, selectedIds }: { scene: THREE.Group, sele
     return null
 }
 
+import { SciFiLoader } from './SciFiLoader'
+
+// ... existing imports ...
+
 export function Viewer3D() {
-    const { currentGlbUrl } = useAppStore()
+    const { currentGlbUrl, isGenerating } = useAppStore()
 
     return (
         <div className="h-full w-full bg-neutral-900 rounded-lg overflow-hidden relative">
-            <Canvas camera={{ position: [2, 2, 2], fov: 50 }}>
+            <Canvas camera={{ position: [2, 2, 5], fov: 50 }} dpr={[1, 2]}> {/* Adjusted Camera for better loader view */}
+                <color attach="background" args={['#111']} />
                 <ambientLight intensity={0.5} />
                 <directionalLight position={[10, 10, 10]} intensity={1} />
-                <Grid infiniteGrid fadeDistance={50} sectionColor="#444" cellColor="#222" />
-                <OrbitControls makeDefault />
-                <Environment preset="city" />
 
-                <Suspense fallback={null}>
-                    {currentGlbUrl && (
-                        <Center>
-                            <Model url={currentGlbUrl} />
-                        </Center>
-                    )}
-                </Suspense>
+                {isGenerating ? (
+                    <SciFiLoader />
+                ) : (
+                    <>
+                        <Grid infiniteGrid fadeDistance={50} sectionColor="#444" cellColor="#222" />
+                        <OrbitControls makeDefault />
+                        <Environment preset="city" />
+                        <Suspense fallback={null}>
+                            {currentGlbUrl && (
+                                <Center>
+                                    <Model url={currentGlbUrl} />
+                                </Center>
+                            )}
+                        </Suspense>
+                    </>
+                )}
             </Canvas>
 
-            <div className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1 rounded text-xs backdrop-blur font-mono">
-                {currentGlbUrl ? 'Model Loaded' : 'Viewer Ready'}
-            </div>
+            {!isGenerating && (
+                <div className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1 rounded text-xs backdrop-blur font-mono">
+                    {currentGlbUrl ? 'Model Loaded' : 'Viewer Ready'}
+                </div>
+            )}
+
+            {isGenerating && (
+                <div className="absolute bottom-10 left-1/2 -translate-x-1/2 text-[#00f3ff] font-mono text-sm tracking-widest animate-pulse">
+                    GENERATING ASSET...
+                </div>
+            )}
         </div>
     )
 }

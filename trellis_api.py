@@ -132,8 +132,8 @@ async def generate_multi_image(
     slat_cfg: float = 3.0
 ):
     try:
-        if len(files) < 8:
-            raise HTTPException(status_code=400, detail="需要至少8張圖片")
+        if len(files) < 2:
+            raise HTTPException(status_code=400, detail="Needs at least 2 images")
             
         request_id = str(uuid.uuid4())
         input_dir = os.path.join(OUTPUT_DIR, request_id)

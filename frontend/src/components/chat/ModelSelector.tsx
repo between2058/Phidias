@@ -25,7 +25,7 @@ export function ModelSelector() {
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Active Model
             </label>
-            <Select value={selectedModel} onValueChange={(v) => setModel(v as ModelType)}>
+            <Select value={selectedModel || ""} onValueChange={(v) => setModel(v as ModelType)}>
                 <SelectTrigger className="w-full bg-secondary/50 border-0 focus:ring-1 ring-primary/20 transition-all hover:bg-secondary/80">
                     <SelectValue placeholder="Select Model" />
                 </SelectTrigger>
@@ -45,7 +45,7 @@ export function ModelSelector() {
                     v0.1
                 </Badge>
                 <span className="text-[10px] text-muted-foreground truncate">
-                    {MODELS.find(m => m.id === selectedModel)?.description}
+                    {MODELS.find(m => m.id === selectedModel)?.description || "No model selected"}
                 </span>
             </div>
         </div>
