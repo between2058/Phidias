@@ -29,3 +29,9 @@ class SegmentationResponse(BaseModel):
     mask_url: Optional[str] = None
     parts: Optional[List[Dict[str, Any]]] = None
     glb_data: Optional[str] = None # Base64 of segmented model
+
+
+class Sam3DRequest(BaseModel):
+    original_image: str  # Base64 encoded original image
+    masked_image: str    # Base64 encoded RGBA image (alpha = mask)
+    seed: int = 42

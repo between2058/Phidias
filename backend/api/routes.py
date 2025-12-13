@@ -20,6 +20,12 @@ router = APIRouter()
 # User should set this env var if different.
 TRELLIS_API_URL = os.getenv("TRELLIS_API_URL", "http://localhost:5000")
 
+# --- DRY RUN MODE ---
+# Set to True to bypass actual model generation and return mock data (Emma char).
+# Useful for frontend development without GPU backend.
+DRY_RUN = True 
+# --------------------
+
 # Mock GLB data
 GLB_PATH = "/Users/between2058/Desktop/code/phidias/emma-stylized-adventure-character/source/1.glb"
 
@@ -43,6 +49,16 @@ async def generate_text_3d(request: GenerationRequest):
     Otherwise, uses mock.
     """
     if request.model_id.lower() == 'trellis':
+        # Dry Run Check
+        if DRY_RUN:
+            logger.info("DRY RUN ACTIVE: Returning mock data for Trellis request.")
+            time.sleep(1) # Simulate delay
+            return GenerationResponse(
+                status="success",
+                glb_data=get_mock_glb_base64(),
+                message=f"[DRY RUN] Mock 3D model for: {request.prompt}"
+            )
+
         try:
             if not request.prompt:
                 raise HTTPException(status_code=400, detail="Prompt is required")
@@ -80,11 +96,6 @@ async def generate_text_3d(request: GenerationRequest):
                 )
         except Exception as e:
             logger.error(f"Trellis Error: {e}")
-            # Fallthrough to mock or return error? User asked for selective usage.
-            # But let's gracefully fall back for now or return specific error if strictly requested.
-            # Given MVP, logging error and falling back (or returning error info) is safer.
-            # However, if user ONLY wants trellis, we should maybe error out if it fails?
-            # For robustness, I'll fallback but append error to message.
             pass
 
     # Mock Fallback (or if model != trellis)
@@ -102,6 +113,16 @@ async def generate_image_3d(request: GenerationRequest):
     Supports Single (generate-single) or Multi (generate-multi).
     """
     if request.model_id.lower() == 'trellis':
+        # Dry Run Check
+        if DRY_RUN:
+            logger.info("DRY RUN ACTIVE: Returning mock data for Trellis Image request.")
+            time.sleep(1) # Simulate delay
+            return GenerationResponse(
+                status="success",
+                glb_data=get_mock_glb_base64(),
+                message="[DRY RUN] Mock 3D model from Image"
+            )
+
         try:
             async with httpx.AsyncClient(timeout=300.0) as client:
                 # 1. Multi-Image Case
@@ -243,4 +264,78 @@ async def segment_3d(request: SegmentationRequest):
 
     except Exception as e:
         logger.error(f"Segmentation Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# SAM3D API Configuration
+SAM3D_API_URL = os.getenv("SAM3D_API_URL", "http://localhost:8001")
+
+@router.post("/generate/sam3d", response_model=GenerationResponse)
+async def generate_sam3d(request: dict):
+    """
+    Proxies request to SAM3D API for image-to-3D generation.
+    
+    Expects:
+    - original_image: Base64 encoded original image
+    - masked_image: Base64 encoded RGBA image (alpha = mask)
+    - seed: Random seed (default 42)
+    """
+    # Dry Run Check
+    if DRY_RUN:
+        logger.info("DRY RUN ACTIVE: Returning mock data for SAM3D request.")
+        time.sleep(1)
+        return GenerationResponse(
+            status="success",
+            glb_data=get_mock_glb_base64(),
+            message="[DRY RUN] Mock 3D model from SAM3D"
+        )
+
+    try:
+        original_b64 = request.get("original_image", "")
+        masked_b64 = request.get("masked_image", "")
+        seed = request.get("seed", 42)
+
+        # Strip data URL prefix if present
+        if "base64," in original_b64:
+            original_b64 = original_b64.split("base64,")[1]
+        if "base64," in masked_b64:
+            masked_b64 = masked_b64.split("base64,")[1]
+
+        # Decode images
+        original_bytes = base64.b64decode(original_b64)
+        masked_bytes = base64.b64decode(masked_b64)
+
+        logger.info(f"Calling SAM3D API at {SAM3D_API_URL}")
+
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            # Upload files to SAM3D API
+            files = [
+                ('image', ('image.png', original_bytes, 'image/png')),
+                ('mask_image', ('mask.png', masked_bytes, 'image/png'))
+            ]
+            
+            response = await client.post(
+                f"{SAM3D_API_URL}/generate",
+                files=files,
+                params={"seed": seed}
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            # Download GLB
+            glb_path = data.get("glb_file")
+            if not glb_path:
+                raise ValueError("No GLB path in SAM3D response")
+
+            glb_resp = await client.get(f"{SAM3D_API_URL}{glb_path}")
+            glb_resp.raise_for_status()
+
+            return GenerationResponse(
+                status="success",
+                glb_data=base64.b64encode(glb_resp.content).decode('utf-8'),
+                message="SAM3D Generated from Image"
+            )
+
+    except Exception as e:
+        logger.error(f"SAM3D Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

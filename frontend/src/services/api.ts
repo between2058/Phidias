@@ -44,6 +44,36 @@ export const api = {
         });
         if (!response.ok) throw new Error('Image Generation failed');
         return response.json();
+    },
+
+    segment3D: async (glbData: string): Promise<GenerationResponse> => {
+        const body = {
+            glb_data: glbData
+        }
+
+        const response = await fetch(`${API_BASE_URL}/segment/3d`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error('Segmentation failed');
+        return response.json();
+    },
+
+    generateSam3D: async (originalImage: string, maskedImage: string, seed: number = 42): Promise<GenerationResponse> => {
+        const body = {
+            original_image: originalImage,
+            masked_image: maskedImage,
+            seed: seed
+        }
+
+        const response = await fetch(`${API_BASE_URL}/generate/sam3d`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error('SAM3D Generation failed');
+        return response.json();
     }
 };
 

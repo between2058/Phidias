@@ -4,11 +4,18 @@ import { parseSceneGraph, findNodeByUuid } from '@/utils/scene'
 
 export type ModelType = 'SAM1' | 'SAM-3D' | 'Trellis' | 'P3-SAM' | null
 
+export interface MessageAction {
+    label: string
+    onClick: () => void
+    variant?: 'default' | 'outline' | 'secondary' | 'ghost' | 'link'
+}
+
 export interface Message {
     id: string
     role: 'user' | 'system'
     content: string
     attachments?: string[] // Base64 strings
+    actions?: MessageAction[]
 }
 
 export interface SceneNode {
@@ -49,14 +56,25 @@ interface AppState {
     reparentNode: (childId: string, parentId: string) => void
     // Generation Params
     generationParams: {
-        seed: number
-        simplify: number
-        ss_sampling_steps: number
-        ss_guidance_strength: number
-        slat_sampling_steps: number
-        slat_guidance_strength: number
+        trellis: {
+            seed: number
+            simplify: number
+            ss_sampling_steps: number
+            ss_guidance_strength: number
+            slat_sampling_steps: number
+            slat_guidance_strength: number
+        }
+        sam3d: {
+            points_per_side: number
+        }
+        p3sam: {
+            point_num: number
+            prompt_num: number
+            threshold: number
+            post_process: boolean
+        }
     }
-    setGenerationParam: (key: string, value: number) => void
+    setGenerationParam: (model: 'trellis' | 'sam3d' | 'p3sam', key: string, value: number | boolean) => void
 
     // Attachments
     attachments: string[] // Base64 strings
@@ -67,7 +85,7 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-    selectedModel: null,
+    selectedModel: 'Trellis', // Default to Trellis for context, but not strict
     messages: [],
     isGenerating: false,
     currentGlbUrl: null,
@@ -79,12 +97,23 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // Defaults
     generationParams: {
-        seed: 1,
-        simplify: 0.95,
-        ss_sampling_steps: 12,
-        ss_guidance_strength: 7.5,
-        slat_sampling_steps: 12,
-        slat_guidance_strength: 7.5,
+        trellis: {
+            seed: 1,
+            simplify: 0.95,
+            ss_sampling_steps: 12,
+            ss_guidance_strength: 7.5,
+            slat_sampling_steps: 12,
+            slat_guidance_strength: 7.5,
+        },
+        sam3d: {
+            points_per_side: 32
+        },
+        p3sam: {
+            point_num: 100000,
+            prompt_num: 400,
+            threshold: 0.95,
+            post_process: true
+        }
     },
     attachments: [],
 
@@ -178,10 +207,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     setTransformMode: (mode) => set({ transformMode: mode }),
 
-    setGenerationParam: (key, value) => set((state) => ({
+    setGenerationParam: (model, key, value) => set((state) => ({
         generationParams: {
             ...state.generationParams,
-            [key]: value
+            [model]: {
+                ...state.generationParams[model],
+                [key]: value
+            }
         }
     })),
 
