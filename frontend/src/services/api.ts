@@ -74,6 +74,68 @@ export const api = {
         });
         if (!response.ok) throw new Error('SAM3D Generation failed');
         return response.json();
+    },
+
+    // SAM3 2D Segmentation APIs
+    sam3SetImage: async (imageBlob: Blob): Promise<{ session_id: string; image_size: { width: number; height: number } }> => {
+        const formData = new FormData();
+        formData.append('image', imageBlob, 'image.png');
+
+        const response = await fetch(`${API_BASE_URL}/segment/2d/set_image`, {
+            method: 'POST',
+            body: formData,
+        });
+        if (!response.ok) throw new Error('Failed to set image');
+        return response.json();
+    },
+
+    sam3Predict: async (
+        sessionId: string,
+        pointCoords: number[][] | null,
+        pointLabels: number[] | null,
+        usePreviousMask: boolean = false,
+        multimaskOutput: boolean = true
+    ): Promise<{ masks: string[]; scores: number[]; best_mask: string }> => {
+        const formData = new FormData();
+        formData.append('session_id', sessionId);
+        if (pointCoords) formData.append('point_coords', JSON.stringify(pointCoords));
+        if (pointLabels) formData.append('point_labels', JSON.stringify(pointLabels));
+        formData.append('use_previous_mask', String(usePreviousMask));
+        formData.append('multimask_output', String(multimaskOutput));
+
+        const response = await fetch(`${API_BASE_URL}/segment/2d/predict`, {
+            method: 'POST',
+            body: formData,
+        });
+        if (!response.ok) throw new Error('Prediction failed');
+        return response.json();
+    },
+
+    sam3PredictAndApply: async (
+        sessionId: string,
+        pointCoords: number[][] | null,
+        pointLabels: number[] | null,
+        usePreviousMask: boolean = false
+    ): Promise<{ rgba_image: string; mask: string; score: number }> => {
+        const formData = new FormData();
+        formData.append('session_id', sessionId);
+        if (pointCoords) formData.append('point_coords', JSON.stringify(pointCoords));
+        if (pointLabels) formData.append('point_labels', JSON.stringify(pointLabels));
+        formData.append('use_previous_mask', String(usePreviousMask));
+        formData.append('return_rgba', 'true');
+
+        const response = await fetch(`${API_BASE_URL}/segment/2d/predict_and_apply`, {
+            method: 'POST',
+            body: formData,
+        });
+        if (!response.ok) throw new Error('Predict and apply failed');
+        return response.json();
+    },
+
+    sam3DeleteSession: async (sessionId: string): Promise<void> => {
+        await fetch(`${API_BASE_URL}/segment/2d/session/${sessionId}`, {
+            method: 'DELETE',
+        });
     }
 };
 

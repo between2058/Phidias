@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Form, UploadFile, Response
 from .models import (
     GenerationRequest, GenerationResponse, 
     SegmentationRequest, SegmentationResponse
@@ -338,4 +338,120 @@ async def generate_sam3d(request: dict):
 
     except Exception as e:
         logger.error(f"SAM3D Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# SAM3 2D Segmentation API Configuration
+SAM3_API_URL = os.getenv("SAM3_API_URL", "http://localhost:8002")
+
+@router.post("/segment/2d/set_image")
+async def set_image_for_segmentation(file: UploadFile):
+    """Proxy to SAM3 /set_image endpoint"""
+    try:
+        logger.info(f"Proxying set_image to SAM3 API at {SAM3_API_URL}")
+        
+        file_content = await file.read()
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            files = {'image': ('image.png', file_content, 'image/png')}
+            response = await client.post(f"{SAM3_API_URL}/set_image", files=files)
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        logger.error(f"SAM3 set_image Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/segment/2d/predict")
+async def predict_segmentation(
+    session_id: str = Form(...),
+    point_coords: str = Form(None),
+    point_labels: str = Form(None),
+    use_previous_mask: bool = Form(False),
+    multimask_output: bool = Form(True)
+):
+    """Proxy to SAM3 /predict endpoint"""
+    try:
+        logger.info(f"Proxying predict to SAM3 API for session {session_id}")
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            data = {
+                'session_id': session_id,
+                'use_previous_mask': str(use_previous_mask).lower(),
+                'multimask_output': str(multimask_output).lower()
+            }
+            if point_coords:
+                data['point_coords'] = point_coords
+            if point_labels:
+                data['point_labels'] = point_labels
+            
+            response = await client.post(f"{SAM3_API_URL}/predict", data=data)
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        logger.error(f"SAM3 predict Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/segment/2d/predict_and_apply")
+async def predict_and_apply_segmentation(
+    session_id: str = Form(...),
+    point_coords: str = Form(None),
+    point_labels: str = Form(None),
+    use_previous_mask: bool = Form(False),
+    return_rgba: bool = Form(True)
+):
+    """Proxy to SAM3 /predict_and_apply endpoint"""
+    try:
+        logger.info(f"Proxying predict_and_apply to SAM3 API for session {session_id}")
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            data = {
+                'session_id': session_id,
+                'use_previous_mask': str(use_previous_mask).lower(),
+                'return_rgba': str(return_rgba).lower()
+            }
+            if point_coords:
+                data['point_coords'] = point_coords
+            if point_labels:
+                data['point_labels'] = point_labels
+            
+            response = await client.post(f"{SAM3_API_URL}/predict_and_apply", data=data)
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        logger.error(f"SAM3 predict_and_apply Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/segment/2d/session/{session_id}")
+async def delete_segmentation_session(session_id: str):
+    """Proxy to SAM3 session deletion endpoint"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.delete(f"{SAM3_API_URL}/session/{session_id}")
+            if response.status_code == 404:
+                return {"message": "Session already deleted or not found"}
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        logger.error(f"SAM3 delete session Error: {e}")
+        return {"message": "Session cleanup attempted"}
+
+
+@router.get("/segment/2d/download/{session_id}/{file_name}")
+async def download_segmentation_file(session_id: str, file_name: str):
+    """Proxy to SAM3 file download endpoint"""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(f"{SAM3_API_URL}/download/{session_id}/{file_name}")
+            response.raise_for_status()
+            
+            return Response(
+                content=response.content,
+                media_type="image/png",
+                headers={"Content-Disposition": f'attachment; filename="{file_name}"'}
+            )
+    except Exception as e:
+        logger.error(f"SAM3 download Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
