@@ -28,3 +28,4 @@ class SegmentationResponse(BaseModel):
     status: str
     mask_url: Optional[str] = None
     parts: Optional[List[Dict[str, Any]]] = None
+    glb_data: Optional[str] = None # Base64 of segmented model

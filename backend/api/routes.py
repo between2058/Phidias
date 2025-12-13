@@ -184,6 +184,8 @@ async def generate_image_3d(request: GenerationRequest):
         message=f"Generated 3D model (Mock) from image"
     )
 
+SEGMENTATION_API_URL = os.getenv("SEGMENTATION_API_URL", "http://localhost:5001")
+
 @router.post("/segment/2d", response_model=SegmentationResponse)
 async def segment_2d(request: SegmentationRequest):
     time.sleep(0.5)
@@ -195,12 +197,50 @@ async def segment_2d(request: SegmentationRequest):
 
 @router.post("/segment/3d", response_model=SegmentationResponse)
 async def segment_3d(request: SegmentationRequest):
-    time.sleep(1)
-    return SegmentationResponse(
-        status="success",
-        parts=[
-            {"id": "node_1", "name": "Body"},
-            {"id": "node_2", "name": "Wheel_FL"},
-            {"id": "node_3", "name": "Wheel_FR"}
-        ]
-    )
+    """
+    Calls the external Segmentation API to segment a 3D model.
+    """
+    try:
+        if not request.glb_data:
+             # Fallback mock for testing
+             logger.warning("No GLB data provided for segmentation, returning mock.")
+             time.sleep(1)
+             return SegmentationResponse(
+                status="success",
+                parts=[
+                    {"id": "node_1", "name": "Body"},
+                    {"id": "node_2", "name": "Wheel_FL"},
+                ]
+             )
+
+        # Decode Base64 GLB
+        glb_bytes = base64.b64decode(request.glb_data)
+        
+        logger.info(f"Calling Segmentation API at {SEGMENTATION_API_URL}")
+        
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            # Upload file
+            files = {'file': ('input.glb', glb_bytes, 'model/gltf-binary')}
+            response = await client.post(f"{SEGMENTATION_API_URL}/segment", files=files)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Download Resulting GLB
+            segmented_glb_path = data.get("segmented_glb")
+            if not segmented_glb_path:
+                raise ValueError("No segmented GLB path in response")
+                
+            glb_resp = await client.get(f"{SEGMENTATION_API_URL}{segmented_glb_path}")
+            glb_resp.raise_for_status()
+            
+            encoded_glb = base64.b64encode(glb_resp.content).decode('utf-8')
+            
+            return SegmentationResponse(
+                status="success",
+                glb_data=encoded_glb,
+                message="Segmentation Complete"
+            )
+
+    except Exception as e:
+        logger.error(f"Segmentation Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
