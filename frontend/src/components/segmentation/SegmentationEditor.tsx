@@ -77,15 +77,57 @@ export function SegmentationEditor({ imageUrl, isOpen, onClose, onConfirm }: Seg
         }
     }
 
+    // Calculate the actual rendered image area within the img element (handles object-fit: contain)
+    const getActualImageBounds = useCallback(() => {
+        if (!imageRef.current) return null
+
+        const img = imageRef.current
+        const rect = img.getBoundingClientRect()
+        const naturalRatio = img.naturalWidth / img.naturalHeight
+        const displayRatio = rect.width / rect.height
+
+        let actualWidth: number, actualHeight: number, offsetX: number, offsetY: number
+
+        if (naturalRatio > displayRatio) {
+            // Image is wider than container - letterboxing on top/bottom
+            actualWidth = rect.width
+            actualHeight = rect.width / naturalRatio
+            offsetX = 0
+            offsetY = (rect.height - actualHeight) / 2
+        } else {
+            // Image is taller than container - letterboxing on left/right
+            actualHeight = rect.height
+            actualWidth = rect.height * naturalRatio
+            offsetX = (rect.width - actualWidth) / 2
+            offsetY = 0
+        }
+
+        return { actualWidth, actualHeight, offsetX, offsetY, rect }
+    }, [])
+
     const handleImageClick = useCallback((e: React.MouseEvent) => {
         if (!imageRef.current || !sessionId) return
 
-        const rect = imageRef.current.getBoundingClientRect()
-        const x = (e.clientX - rect.left) / rect.width
-        const y = (e.clientY - rect.top) / rect.height
+        const bounds = getActualImageBounds()
+        if (!bounds) return
+
+        const { actualWidth, actualHeight, offsetX, offsetY, rect } = bounds
+
+        // Calculate click position relative to actual image area
+        const clickX = e.clientX - rect.left - offsetX
+        const clickY = e.clientY - rect.top - offsetY
+
+        // Check if click is within actual image bounds
+        if (clickX < 0 || clickX > actualWidth || clickY < 0 || clickY > actualHeight) {
+            return // Clicked outside the actual image (in letterbox area)
+        }
+
+        // Normalize to 0-1 range based on actual image dimensions
+        const x = clickX / actualWidth
+        const y = clickY / actualHeight
 
         setPoints(prev => [...prev, { x, y, type: mode }])
-    }, [mode, sessionId])
+    }, [mode, sessionId, getActualImageBounds])
 
     const handleRunSegmentation = async () => {
         if (!sessionId || points.length === 0) return
@@ -256,6 +298,8 @@ export function SegmentationEditor({ imageUrl, isOpen, onClose, onConfirm }: Seg
                                         p.type === 'foreground' ? "bg-green-500" : "bg-red-500"
                                     )}
                                     style={{
+                                        // Points are normalized 0-1, position them within the img element
+                                        // Since img uses object-fit:contain, we use % which works correctly
                                         left: `${p.x * 100}%`,
                                         top: `${p.y * 100}%`
                                     }}
