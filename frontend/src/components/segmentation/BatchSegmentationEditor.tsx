@@ -340,28 +340,14 @@ export function BatchSegmentationEditor({ images, isOpen, onClose, onComplete }:
                             draggable={false}
                         />
 
-                        {/* Mask overlay - Tiffany Green */}
+                        {/* Mask overlay */}
                         {maskOverlayUrl && (
-                            <div
-                                className="absolute inset-0 w-full h-full pointer-events-none flex items-center justify-center"
-                            >
-                                <div
-                                    style={{
-                                        width: '100%',
-                                        height: '100%',
-                                        backgroundColor: '#0ABAB5',
-                                        opacity: 0.6,
-                                        WebkitMaskImage: `url(${maskOverlayUrl})`,
-                                        maskImage: `url(${maskOverlayUrl})`,
-                                        WebkitMaskSize: 'contain',
-                                        maskSize: 'contain',
-                                        WebkitMaskPosition: 'center',
-                                        maskPosition: 'center',
-                                        WebkitMaskRepeat: 'no-repeat',
-                                        maskRepeat: 'no-repeat'
-                                    }}
-                                />
-                            </div>
+                            <img
+                                src={maskOverlayUrl}
+                                alt="Mask"
+                                className="absolute inset-0 w-full h-full object-contain pointer-events-none opacity-50"
+                                style={{ mixBlendMode: 'multiply' }}
+                            />
                         )}
 
                         {/* Points */}
