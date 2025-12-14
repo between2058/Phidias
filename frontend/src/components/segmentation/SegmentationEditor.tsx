@@ -297,14 +297,29 @@ export function SegmentationEditor({ imageUrl, isOpen, onClose, onConfirm }: Seg
                                 draggable={false}
                             />
 
-                            {/* Mask Overlay */}
+                            {/* Mask Overlay - Tiffany Green */}
                             {maskOverlayUrl && (
-                                <img
-                                    src={maskOverlayUrl}
-                                    alt="Mask Overlay"
-                                    className="absolute inset-0 w-full h-full object-contain pointer-events-none opacity-50"
-                                    style={{ mixBlendMode: 'screen' }}
-                                />
+                                <div
+                                    className="absolute inset-0 w-full h-full pointer-events-none flex items-center justify-center"
+                                >
+                                    <div
+                                        className="max-w-full max-h-full"
+                                        style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            backgroundColor: '#0ABAB5',
+                                            opacity: 0.6,
+                                            WebkitMaskImage: `url(${maskOverlayUrl})`,
+                                            maskImage: `url(${maskOverlayUrl})`,
+                                            WebkitMaskSize: 'contain',
+                                            maskSize: 'contain',
+                                            WebkitMaskPosition: 'center',
+                                            maskPosition: 'center',
+                                            WebkitMaskRepeat: 'no-repeat',
+                                            maskRepeat: 'no-repeat'
+                                        }}
+                                    />
+                                </div>
                             )}
 
                             {/* Render Points */}

@@ -76,6 +76,26 @@ export const api = {
         return response.json();
     },
 
+    generateTrellisMulti: async (images: string[], params?: any): Promise<GenerationResponse> => {
+        const body = {
+            images: images,
+            seed: params?.seed ?? 1,
+            simplify: params?.simplify ?? 0.95,
+            ss_sampling_steps: params?.ss_sampling_steps ?? 12,
+            ss_guidance_strength: params?.ss_guidance_strength ?? 7.5,
+            slat_sampling_steps: params?.slat_sampling_steps ?? 12,
+            slat_guidance_strength: params?.slat_guidance_strength ?? 3.0
+        };
+
+        const response = await fetch(`${API_BASE_URL}/generate/trellis/multi`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error('Trellis Multi-Image Generation failed');
+        return response.json();
+    },
+
     // SAM3 2D Segmentation APIs
     sam3SetImage: async (imageBlob: Blob): Promise<{ session_id: string; image_size: { width: number; height: number } }> => {
         const formData = new FormData();

@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Form, UploadFile, Response, File
 from .models import (
     GenerationRequest, GenerationResponse, 
-    SegmentationRequest, SegmentationResponse
+    SegmentationRequest, SegmentationResponse,
+    TrellisMultiRequest
 )
 import base64
 import time
@@ -204,6 +205,73 @@ async def generate_image_3d(request: GenerationRequest):
         glb_data=get_mock_glb_base64(),
         message=f"Generated 3D model (Mock) from image"
     )
+
+
+@router.post("/generate/trellis/multi", response_model=GenerationResponse)
+async def generate_trellis_multi(request: TrellisMultiRequest):
+    """
+    Generates 3D from multiple images using Trellis multi-image API.
+    """
+    if len(request.images) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 images required for multi-image generation")
+    
+    # Dry Run Check
+    if DRY_RUN:
+        logger.info("DRY RUN ACTIVE: Returning mock data for Trellis Multi-Image request.")
+        time.sleep(1)
+        return GenerationResponse(
+            status="success",
+            glb_data=get_mock_glb_base64(),
+            message="[DRY RUN] Mock 3D model from Multi-Image"
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            logger.info(f"Calling Trellis (Multi-Image) with {len(request.images)} images")
+            
+            # Convert base64s to bytes for multipart upload
+            files = []
+            for i, b64_str in enumerate(request.images):
+                # Strip prefix if present (e.g. "data:image/png;base64,")
+                if "base64," in b64_str:
+                    b64_str = b64_str.split("base64,")[1]
+                
+                file_bytes = base64.b64decode(b64_str)
+                files.append(('files', (f'image_{i}.png', file_bytes, 'image/png')))
+
+            response = await client.post(
+                f"{TRELLIS_API_URL}/generate-multi",
+                params={
+                    "seed": request.seed,
+                    "simplify": request.simplify,
+                    "sparse_steps": request.ss_sampling_steps,
+                    "sparse_cfg": request.ss_guidance_strength,
+                    "slat_steps": request.slat_sampling_steps,
+                    "slat_cfg": request.slat_guidance_strength
+                },
+                files=files
+            )
+            
+            response.raise_for_status()
+            data = response.json()
+            
+            # Download GLB
+            glb_path = data.get("glb_file")
+            if not glb_path:
+                raise ValueError("No GLB path in response")
+            
+            glb_resp = await client.get(f"{TRELLIS_API_URL}{glb_path}")
+            glb_resp.raise_for_status()
+            
+            return GenerationResponse(
+                status="success",
+                glb_data=base64.b64encode(glb_resp.content).decode('utf-8'),
+                message=f"Trellis Generated from {len(request.images)} images"
+            )
+
+    except Exception as e:
+        logger.error(f"Trellis Multi-Image Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 SEGMENTATION_API_URL = os.getenv("SEGMENTATION_API_URL", "http://localhost:5001")
 

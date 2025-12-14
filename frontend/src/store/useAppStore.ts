@@ -10,12 +10,20 @@ export interface MessageAction {
     variant?: 'default' | 'outline' | 'secondary' | 'ghost' | 'link'
 }
 
+export interface ImageBatchItem {
+    id: string
+    originalUrl: string
+    processedUrl?: string
+    skipped?: boolean
+}
+
 export interface Message {
     id: string
     role: 'user' | 'system'
     content: string
     attachments?: string[] // Base64 strings
     actions?: MessageAction[]
+    imageBatch?: ImageBatchItem[]  // For multi-image batches
 }
 
 export interface SceneNode {

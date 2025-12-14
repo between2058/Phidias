@@ -35,3 +35,13 @@ class Sam3DRequest(BaseModel):
     original_image: str  # Base64 encoded original image
     masked_image: str    # Base64 encoded RGBA image (alpha = mask)
     seed: int = 42
+
+
+class TrellisMultiRequest(BaseModel):
+    images: List[str]  # List of Base64 encoded images
+    seed: int = 1
+    simplify: float = 0.95
+    ss_sampling_steps: int = 12
+    ss_guidance_strength: float = 7.5
+    slat_sampling_steps: int = 12
+    slat_guidance_strength: float = 3.0

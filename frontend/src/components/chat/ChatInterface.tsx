@@ -17,6 +17,9 @@ import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
 import ReactMarkdown from 'react-markdown'
 import { SegmentationEditor } from '@/components/segmentation/SegmentationEditor'
+import { BatchSegmentationEditor } from '@/components/segmentation/BatchSegmentationEditor'
+import { MultiImageCard } from '@/components/chat/MultiImageCard'
+import { ImageBatchItem } from '@/store/useAppStore'
 
 export function ChatInterface() {
     const {
@@ -26,6 +29,11 @@ export function ChatInterface() {
 
     const [inputValue, setInputValue] = useState('')
     const [editingImage, setEditingImage] = useState<string | null>(null)
+
+    // Batch image editing state
+    const [imageBatch, setImageBatch] = useState<ImageBatchItem[] | null>(null)
+    const [batchEditIndex, setBatchEditIndex] = useState(0)
+    const [isBatchEditing, setIsBatchEditing] = useState(false)
     const scrollRef = useRef<HTMLDivElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
@@ -132,57 +140,194 @@ export function ChatInterface() {
         }
     }
 
+    // Trellis multi-image generation handler
+    const handleTrellisMultiGenerate = async (batch: ImageBatchItem[]) => {
+        setGenerating(true)
+        try {
+            // Use processed images if available, otherwise original
+            const imagesToUse = batch.map(img => img.processedUrl || img.originalUrl)
+
+            addMessage({
+                id: Date.now().toString(),
+                role: 'system',
+                content: `Generating 3D with **Trellis Multi-Image** (${imagesToUse.length} images)...`
+            })
+
+            const response = await api.generateTrellisMulti(imagesToUse, generationParams.trellis)
+
+            let systemMessageContent = "Trellis multi-image generation complete."
+            if (response.glb_data) {
+                const blob = base64ToBlob(response.glb_data)
+                const url = URL.createObjectURL(blob)
+                useAppStore.getState().setGlbUrl(url)
+                systemMessageContent += " Loaded into viewer."
+            }
+
+            addMessage({
+                id: Date.now().toString(),
+                role: 'system',
+                content: systemMessageContent
+            })
+        } catch (error) {
+            addMessage({
+                id: Date.now().toString(),
+                role: 'system',
+                content: `Error: Trellis multi-image generation failed. ${(error as Error).message}`
+            })
+        } finally {
+            setGenerating(false)
+        }
+    }
+
+    // SAM3D batch generation handler (requires all images to be segmented)
+    const handleSam3DBatchGenerate = async (batch: ImageBatchItem[]) => {
+        // Check if all images have been processed
+        const allProcessed = batch.every(img => img.processedUrl)
+        if (!allProcessed) {
+            addMessage({
+                id: Date.now().toString(),
+                role: 'system',
+                content: "⚠️ SAM3D requires all images to be segmented first. Please use 'Batch Segment' to process all images."
+            })
+            return
+        }
+
+        setGenerating(true)
+        try {
+            addMessage({
+                id: Date.now().toString(),
+                role: 'system',
+                content: `Generating 3D with **SAM3D Batch** (${batch.length} images)... This may take a while.`
+            })
+
+            // For SAM3D we need original + masked pairs
+            // TODO: Implement SAM3D batch API call
+            // For now, process the first image pair as a demo
+            const firstImage = batch[0]
+            const response = await api.generateSam3D(
+                firstImage.originalUrl,
+                firstImage.processedUrl!,
+                generationParams.sam3d.points_per_side
+            )
+
+            let systemMessageContent = "SAM3D batch generation complete."
+            if (response.glb_data) {
+                const blob = base64ToBlob(response.glb_data)
+                const url = URL.createObjectURL(blob)
+                useAppStore.getState().setGlbUrl(url)
+                systemMessageContent += " Loaded into viewer."
+            }
+
+            addMessage({
+                id: Date.now().toString(),
+                role: 'system',
+                content: systemMessageContent
+            })
+        } catch (error) {
+            addMessage({
+                id: Date.now().toString(),
+                role: 'system',
+                content: `Error: SAM3D batch generation failed. ${(error as Error).message}`
+            })
+        } finally {
+            setGenerating(false)
+        }
+    }
+
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files
         if (!files || files.length === 0) return
 
+        // Collect all images
+        const imageFiles: File[] = []
+        const glbFiles: File[] = []
+
         Array.from(files).forEach(file => {
             if (file.name.endsWith('.glb')) {
-                // Direct GLB Viewer Load
-                const url = URL.createObjectURL(file)
-                setGlbUrl(url)
-                addMessage({
-                    id: Date.now().toString(),
-                    role: 'system',
-                    content: `Loaded local file: ${file.name}`
-                })
+                glbFiles.push(file)
             } else if (file.type.startsWith('image/')) {
-                // Add to attachments for generation
+                imageFiles.push(file)
+            }
+        })
+
+        // Handle GLB files (one at a time)
+        glbFiles.forEach(file => {
+            const url = URL.createObjectURL(file)
+            setGlbUrl(url)
+            addMessage({
+                id: Date.now().toString(),
+                role: 'system',
+                content: `Loaded local file: ${file.name}`
+            })
+        })
+
+        // Handle image files - batch if multiple
+        if (imageFiles.length === 1) {
+            // Single image: original behavior
+            const file = imageFiles[0]
+            const reader = new FileReader()
+            reader.onload = (ev) => {
+                if (ev.target?.result) {
+                    const base64 = ev.target.result as string
+                    // Don't add to attachments - image is displayed in the message
+                    addMessage({
+                        id: Date.now().toString(),
+                        role: 'system',
+                        content: `**Image Uploaded**\n\nWhat would you like to do?`,
+                        attachments: [base64],  // Add preview
+                        actions: [
+                            {
+                                label: "🚀 Generate 3D (Trellis)",
+                                onClick: () => {
+                                    setInputValue("Generating 3D model (Trellis)...")
+                                    setTimeout(() => handleManualGenerate(base64, 'Trellis'), 100)
+                                }
+                            },
+                            {
+                                label: "🖱️ Interactive Seg",
+                                variant: "outline",
+                                onClick: () => {
+                                    setEditingImage(base64)
+                                }
+                            }
+                        ]
+                    })
+                }
+            }
+            reader.readAsDataURL(file)
+        } else if (imageFiles.length > 1) {
+            // Multiple images: batch mode
+            const batchId = Date.now().toString()
+            const loadedImages: ImageBatchItem[] = []
+            let loadedCount = 0
+
+            imageFiles.forEach((file, idx) => {
                 const reader = new FileReader()
                 reader.onload = (ev) => {
                     if (ev.target?.result) {
                         const base64 = ev.target.result as string
-                        // addAttachment(base64) // Don't auto-attach to global state immediately, let user decide action?
-                        // Actually, users might want to type with it. Keeping auto-attach is fine, but we ALSO show the card.
-                        addAttachment(base64)
+                        loadedImages[idx] = {
+                            id: `${batchId}-${idx}`,
+                            originalUrl: base64
+                        }
+                        // Don't add to attachments - images are displayed in MultiImageCard
+                        loadedCount++
 
-                        // Smart Context: Suggest Next Steps
-                        addMessage({
-                            id: Date.now().toString(),
-                            role: 'system',
-                            content: `**Image Uploaded**\n\nWhat would you like to do?`,
-                            actions: [
-                                {
-                                    label: "🚀 Generate 3D (Trellis)",
-                                    onClick: () => {
-                                        setInputValue("Generating 3D model (Trellis)...")
-                                        setTimeout(() => handleManualGenerate(base64, 'Trellis'), 100)
-                                    }
-                                },
-                                {
-                                    label: "🖱️ Interactive Seg",
-                                    variant: "outline",
-                                    onClick: () => {
-                                        setEditingImage(base64)
-                                    }
-                                }
-                            ]
-                        })
+                        // When all loaded, create batch message
+                        if (loadedCount === imageFiles.length) {
+                            setImageBatch(loadedImages)
+                            addMessage({
+                                id: batchId,
+                                role: 'system',
+                                content: `**${imageFiles.length} Images Uploaded**`,
+                                imageBatch: loadedImages
+                            })
+                        }
                     }
                 }
                 reader.readAsDataURL(file)
-            }
-        })
+            })
+        }
 
         // Reset input
         e.target.value = ''
@@ -548,7 +693,7 @@ export function ChatInterface() {
                                             {msg.content}
                                         </ReactMarkdown>
                                     </div>
-                                    {msg.attachments && msg.attachments.length > 0 && (
+                                    {msg.attachments && msg.attachments.length > 0 && !msg.imageBatch && (
                                         <div className="flex flex-wrap gap-2 mt-2">
                                             {msg.attachments.map((src, i) => (
                                                 <img
@@ -558,6 +703,25 @@ export function ChatInterface() {
                                                     className="h-20 w-auto rounded-md object-cover border border-white/20"
                                                 />
                                             ))}
+                                        </div>
+                                    )}
+                                    {msg.imageBatch && msg.imageBatch.length > 0 && (
+                                        <div className="mt-2">
+                                            <MultiImageCard
+                                                images={msg.imageBatch}
+                                                onBatchEdit={() => {
+                                                    setImageBatch(msg.imageBatch!)
+                                                    setBatchEditIndex(0)
+                                                    setIsBatchEditing(true)
+                                                }}
+                                                onGenerateTrellis={() => {
+                                                    handleTrellisMultiGenerate(msg.imageBatch!)
+                                                }}
+                                                onGenerateSam3D={() => {
+                                                    handleSam3DBatchGenerate(msg.imageBatch!)
+                                                }}
+                                                isProcessing={isGenerating}
+                                            />
                                         </div>
                                     )}
                                     {msg.actions && msg.actions.length > 0 && (
@@ -715,6 +879,28 @@ export function ChatInterface() {
                 imageUrl={editingImage || ""}
                 onClose={() => setEditingImage(null)}
                 onConfirm={handleSegmentationConfirm}
+            />
+
+            <BatchSegmentationEditor
+                isOpen={isBatchEditing && imageBatch !== null}
+                images={imageBatch || []}
+                onClose={() => {
+                    setIsBatchEditing(false)
+                }}
+                onComplete={(processedImages) => {
+                    // Update the batch in messages with processed URLs
+                    setImageBatch(processedImages)
+                    setIsBatchEditing(false)
+
+                    // Update the message that contains this batch
+                    const processedCount = processedImages.filter(img => img.processedUrl).length
+                    addMessage({
+                        id: Date.now().toString(),
+                        role: 'system',
+                        content: `**Batch Segmentation Complete**\n\n${processedCount} of ${processedImages.length} images processed.`,
+                        imageBatch: processedImages
+                    })
+                }}
             />
         </div>
     )
