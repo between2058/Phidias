@@ -345,12 +345,12 @@ async def generate_sam3d(request: dict):
 SAM3_API_URL = os.getenv("SAM3_API_URL", "http://localhost:8002")
 
 @router.post("/segment/2d/set_image")
-async def set_image_for_segmentation(file: UploadFile):
+async def set_image_for_segmentation(image: UploadFile):
     """Proxy to SAM3 /set_image endpoint"""
     try:
         logger.info(f"Proxying set_image to SAM3 API at {SAM3_API_URL}")
         
-        file_content = await file.read()
+        file_content = await image.read()
         
         async with httpx.AsyncClient(timeout=60.0) as client:
             files = {'image': ('image.png', file_content, 'image/png')}
