@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Form, UploadFile, Response
+from fastapi import APIRouter, HTTPException, Form, UploadFile, Response, File
 from .models import (
     GenerationRequest, GenerationResponse, 
     SegmentationRequest, SegmentationResponse
