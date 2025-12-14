@@ -176,8 +176,10 @@ export function SegmentationEditor({ imageUrl, isOpen, onClose, onConfirm }: Seg
             )
 
             // Display best mask overlay
+            // SAM3 returns /download/... but backend proxy is at /segment/2d/download/...
             if (result.best_mask) {
-                setMaskOverlayUrl(`${API_BASE_URL}${result.best_mask}`)
+                const proxyPath = result.best_mask.replace('/download/', '/segment/2d/download/')
+                setMaskOverlayUrl(`${API_BASE_URL}${proxyPath}`)
             }
         } catch (e) {
             setError(`Segmentation failed: ${(e as Error).message}`)
@@ -208,8 +210,9 @@ export function SegmentationEditor({ imageUrl, isOpen, onClose, onConfirm }: Seg
                 maskOverlayUrl !== null  // usePreviousMask if we have an overlay
             )
 
-            // Get the full RGBA image URL
-            const fullRgbaUrl = `${API_BASE_URL}${result.rgba_image}`
+            // Get the full RGBA image URL - convert SAM3 path to backend proxy path
+            const proxyRgbaPath = result.rgba_image.replace('/download/', '/segment/2d/download/')
+            const fullRgbaUrl = `${API_BASE_URL}${proxyRgbaPath}`
             setRgbaImageUrl(fullRgbaUrl)
 
             // Fetch the RGBA image and convert to data URL

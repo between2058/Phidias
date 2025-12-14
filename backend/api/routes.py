@@ -357,8 +357,16 @@ async def set_image_for_segmentation(image: UploadFile = File(...)):
         async with httpx.AsyncClient(timeout=60.0) as client:
             files = {'image': ('image.png', file_content, 'image/png')}
             response = await client.post(f"{SAM3_API_URL}/set_image", files=files)
-            response.raise_for_status()
+            
+            if response.status_code != 200:
+                error_detail = response.text
+                logger.error(f"SAM3 API returned {response.status_code}: {error_detail}")
+                raise HTTPException(status_code=response.status_code, detail=f"SAM3 API error: {error_detail}")
+            
             return response.json()
+    except httpx.ConnectError as e:
+        logger.error(f"Cannot connect to SAM3 API at {SAM3_API_URL}: {e}")
+        raise HTTPException(status_code=503, detail=f"SAM3 API is not available at {SAM3_API_URL}. Make sure it's running: uvicorn sam3_api:app --port 8002")
     except Exception as e:
         logger.error(f"SAM3 set_image Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
