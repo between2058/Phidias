@@ -461,24 +461,18 @@ async def predict_and_apply_segmentation(
             result = response.json()
             
             # Download RGBA image and convert to base64
+            # Note: Frontend only needs rgba_base64, mask is not downloaded to avoid issues
             rgba_base64 = None
             if result.get('rgba_image'):
                 rgba_resp = await client.get(f"{SAM3_API_URL}{result['rgba_image']}")
                 rgba_resp.raise_for_status()
                 rgba_base64 = base64.b64encode(rgba_resp.content).decode('utf-8')
             
-            # Download mask and convert to base64
-            mask_base64 = None
-            if result.get('mask'):
-                mask_resp = await client.get(f"{SAM3_API_URL}{result['mask']}")
-                mask_resp.raise_for_status()
-                mask_base64 = base64.b64encode(mask_resp.content).decode('utf-8')
-            
             return {
                 "session_id": result.get("session_id"),
                 "score": result.get("score", 0),
                 "rgba_base64": rgba_base64,
-                "mask_base64": mask_base64
+                "mask_base64": None  # Not needed by frontend
             }
     except Exception as e:
         logger.error(f"SAM3 predict_and_apply Error: {e}")
