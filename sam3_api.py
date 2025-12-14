@@ -130,6 +130,10 @@ async def set_image(image: UploadFile = File(..., description="要分割的圖�
             pil_image = Image.fromarray(img_array)
             print(f"強制移除 alpha 通道")
         
+        # 重新保存為 RGB 格式（確保磁碟上的檔案也是 RGB）
+        pil_image.save(image_path, 'PNG')
+        print(f"已將 RGB 圖片保存至: {image_path}")
+        
         inference_state = processor.set_image(pil_image)
 
         # 儲存 inference_state
