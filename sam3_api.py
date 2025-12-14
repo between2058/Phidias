@@ -101,9 +101,20 @@ async def set_image(image: UploadFile = File(..., description="要分割的圖�
 
         # 載入圖片並設定到處理器
         pil_image = Image.open(image_path)
+        original_mode = pil_image.mode
+        print(f"原始圖片模式: {original_mode}, 尺寸: {pil_image.size}")
+        
         # 確保圖片是 RGB 格式（SAM3 需要 3 通道）
-        if pil_image.mode != 'RGB':
+        if pil_image.mode == 'RGBA':
+            # 將 RGBA 轉換為 RGB，透明部分變白色背景
+            background = Image.new('RGB', pil_image.size, (255, 255, 255))
+            background.paste(pil_image, mask=pil_image.split()[3])  # 使用 alpha 作為 mask
+            pil_image = background
+            print(f"已將 RGBA 轉換為 RGB (白色背景)")
+        elif pil_image.mode != 'RGB':
             pil_image = pil_image.convert('RGB')
+            print(f"已將 {original_mode} 轉換為 RGB")
+        
         inference_state = processor.set_image(pil_image)
 
         # 儲存 inference_state
