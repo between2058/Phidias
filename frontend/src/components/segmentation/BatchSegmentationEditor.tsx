@@ -332,23 +332,26 @@ export function BatchSegmentationEditor({ images, isOpen, onClose, onComplete }:
                             </div>
                         )}
 
-                        <img
-                            ref={imageRef}
-                            src={currentImage.originalUrl}
-                            alt="Edit image"
-                            className="max-w-full max-h-full object-contain"
-                            draggable={false}
-                        />
-
-                        {/* Mask overlay */}
-                        {maskOverlayUrl && (
+                        {/* Image wrapper with relative positioning for mask overlay */}
+                        <div className="relative">
                             <img
-                                src={maskOverlayUrl}
-                                alt="Mask"
-                                className="absolute inset-0 w-full h-full object-contain pointer-events-none opacity-50"
-                                style={{ mixBlendMode: 'multiply' }}
+                                ref={imageRef}
+                                src={currentImage.originalUrl}
+                                alt="Edit image"
+                                className="max-h-[60vh] object-contain cursor-crosshair"
+                                draggable={false}
                             />
-                        )}
+
+                            {/* Mask overlay */}
+                            {maskOverlayUrl && (
+                                <img
+                                    src={maskOverlayUrl}
+                                    alt="Mask"
+                                    className="absolute inset-0 w-full h-full object-contain pointer-events-none opacity-50"
+                                    style={{ mixBlendMode: 'screen' }}
+                                />
+                            )}
+                        </div>
 
                         {/* Points */}
                         {points.map((p, i) => {
