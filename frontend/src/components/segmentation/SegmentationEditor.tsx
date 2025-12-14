@@ -58,19 +58,41 @@ export function SegmentationEditor({ imageUrl, isOpen, onClose, onConfirm }: Seg
         }
     }, [sessionId])
 
+
     const initializeSession = async () => {
         setInitializing(true)
         setError(null)
         try {
-            // Convert image URL to Blob
-            const response = await fetch(imageUrl)
-            const blob = await response.blob()
+            let blob: Blob
+
+            // Check if imageUrl is a data URL
+            if (imageUrl.startsWith('data:')) {
+                // Convert data URL to Blob
+                const response = await fetch(imageUrl)
+                blob = await response.blob()
+            } else {
+                // Fetch regular URL
+                const response = await fetch(imageUrl)
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch image: ${response.statusText}`)
+                }
+                blob = await response.blob()
+            }
+
+            // Ensure blob has correct MIME type
+            if (!blob.type.startsWith('image/')) {
+                // If MIME type is wrong, try to fix it
+                blob = new Blob([blob], { type: 'image/png' })
+            }
+
+            console.log('Sending image blob:', blob.type, blob.size, 'bytes')
 
             // Call API to set image
             const result = await api.sam3SetImage(blob)
             setSessionId(result.session_id)
             setImageSize(result.image_size)
         } catch (e) {
+            console.error('Initialize session error:', e)
             setError(`Failed to initialize: ${(e as Error).message}`)
         } finally {
             setInitializing(false)

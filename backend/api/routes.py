@@ -349,8 +349,10 @@ async def set_image_for_segmentation(image: UploadFile):
     """Proxy to SAM3 /set_image endpoint"""
     try:
         logger.info(f"Proxying set_image to SAM3 API at {SAM3_API_URL}")
+        logger.info(f"Received file: {image.filename}, content_type: {image.content_type}")
         
         file_content = await image.read()
+        logger.info(f"File size: {len(file_content)} bytes")
         
         async with httpx.AsyncClient(timeout=60.0) as client:
             files = {'image': ('image.png', file_content, 'image/png')}
