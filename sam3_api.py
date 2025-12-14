@@ -274,6 +274,11 @@ async def predict_and_apply(
             rgba_img = Image.fromarray(original_np)
             rgba_path = os.path.join(work_dir, "rgba_output.png")
             rgba_img.save(rgba_path)
+            
+            # 也儲存 mask 圖片
+            mask_img = Image.fromarray((best_mask * 255).astype(np.uint8))
+            mask_path = os.path.join(work_dir, "mask_best.png")
+            mask_img.save(mask_path)
 
             return {
                 "session_id": session_id,
