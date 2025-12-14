@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { X, Check, MousePointer2, Eraser, Undo, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { api } from '@/services/api'
+import { api, API_BASE_URL } from '@/services/api'
 
 interface SegmentationEditorProps {
     imageUrl: string
@@ -18,8 +18,6 @@ interface Point {
     y: number
     type: 'foreground' | 'background'
 }
-
-const API_BASE_URL = 'http://localhost:8000'
 
 export function SegmentationEditor({ imageUrl, isOpen, onClose, onConfirm }: SegmentationEditorProps) {
     const [points, setPoints] = useState<Point[]>([])
@@ -175,11 +173,9 @@ export function SegmentationEditor({ imageUrl, isOpen, onClose, onConfirm }: Seg
                 true    // multimaskOutput
             )
 
-            // Display best mask overlay
-            // SAM3 returns /download/... but backend proxy is at /segment/2d/download/...
-            if (result.best_mask) {
-                const proxyPath = result.best_mask.replace('/download/', '/segment/2d/download/')
-                setMaskOverlayUrl(`${API_BASE_URL}${proxyPath}`)
+            // Display best mask overlay using base64 data URL
+            if (result.best_mask_base64) {
+                setMaskOverlayUrl(`data:image/png;base64,${result.best_mask_base64}`)
             }
         } catch (e) {
             setError(`Segmentation failed: ${(e as Error).message}`)
@@ -210,15 +206,12 @@ export function SegmentationEditor({ imageUrl, isOpen, onClose, onConfirm }: Seg
                 maskOverlayUrl !== null  // usePreviousMask if we have an overlay
             )
 
-            // Get the full RGBA image URL - convert SAM3 path to backend proxy path
-            const proxyRgbaPath = result.rgba_image.replace('/download/', '/segment/2d/download/')
-            const fullRgbaUrl = `${API_BASE_URL}${proxyRgbaPath}`
-            setRgbaImageUrl(fullRgbaUrl)
-
-            // Fetch the RGBA image and convert to data URL
-            const rgbaResponse = await fetch(fullRgbaUrl)
-            const rgbaBlob = await rgbaResponse.blob()
-            const rgbaDataUrl = await blobToDataURL(rgbaBlob)
+            // Backend now returns base64 directly - convert to data URL
+            if (!result.rgba_base64) {
+                throw new Error('No RGBA image returned')
+            }
+            const rgbaDataUrl = `data:image/png;base64,${result.rgba_base64}`
+            setRgbaImageUrl(rgbaDataUrl)
 
             // Pass both original and masked to parent
             onConfirm(imageUrl, rgbaDataUrl)

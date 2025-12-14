@@ -380,7 +380,10 @@ async def predict_segmentation(
     use_previous_mask: bool = Form(False),
     multimask_output: bool = Form(True)
 ):
-    """Proxy to SAM3 /predict endpoint"""
+    """
+    Proxy to SAM3 /predict endpoint.
+    Returns base64 encoded mask data directly.
+    """
     try:
         logger.info(f"Proxying predict to SAM3 API for session {session_id}")
         
@@ -395,9 +398,32 @@ async def predict_segmentation(
             if point_labels:
                 data['point_labels'] = point_labels
             
+            # Call SAM3 predict
             response = await client.post(f"{SAM3_API_URL}/predict", data=data)
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            
+            # Download the best mask and convert to base64
+            masks_base64 = []
+            if result.get('masks'):
+                for mask_path in result['masks']:
+                    mask_resp = await client.get(f"{SAM3_API_URL}{mask_path}")
+                    mask_resp.raise_for_status()
+                    masks_base64.append(base64.b64encode(mask_resp.content).decode('utf-8'))
+            
+            best_mask_base64 = None
+            if result.get('best_mask'):
+                best_mask_resp = await client.get(f"{SAM3_API_URL}{result['best_mask']}")
+                best_mask_resp.raise_for_status()
+                best_mask_base64 = base64.b64encode(best_mask_resp.content).decode('utf-8')
+            
+            return {
+                "session_id": result.get("session_id"),
+                "mask_count": result.get("mask_count", 0),
+                "masks_base64": masks_base64,
+                "scores": result.get("scores", []),
+                "best_mask_base64": best_mask_base64
+            }
     except Exception as e:
         logger.error(f"SAM3 predict Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -411,7 +437,10 @@ async def predict_and_apply_segmentation(
     use_previous_mask: bool = Form(False),
     return_rgba: bool = Form(True)
 ):
-    """Proxy to SAM3 /predict_and_apply endpoint"""
+    """
+    Proxy to SAM3 /predict_and_apply endpoint.
+    Returns base64 encoded RGBA image directly.
+    """
     try:
         logger.info(f"Proxying predict_and_apply to SAM3 API for session {session_id}")
         
@@ -426,9 +455,31 @@ async def predict_and_apply_segmentation(
             if point_labels:
                 data['point_labels'] = point_labels
             
+            # Call SAM3 predict_and_apply
             response = await client.post(f"{SAM3_API_URL}/predict_and_apply", data=data)
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            
+            # Download RGBA image and convert to base64
+            rgba_base64 = None
+            if result.get('rgba_image'):
+                rgba_resp = await client.get(f"{SAM3_API_URL}{result['rgba_image']}")
+                rgba_resp.raise_for_status()
+                rgba_base64 = base64.b64encode(rgba_resp.content).decode('utf-8')
+            
+            # Download mask and convert to base64
+            mask_base64 = None
+            if result.get('mask'):
+                mask_resp = await client.get(f"{SAM3_API_URL}{result['mask']}")
+                mask_resp.raise_for_status()
+                mask_base64 = base64.b64encode(mask_resp.content).decode('utf-8')
+            
+            return {
+                "session_id": result.get("session_id"),
+                "score": result.get("score", 0),
+                "rgba_base64": rgba_base64,
+                "mask_base64": mask_base64
+            }
     except Exception as e:
         logger.error(f"SAM3 predict_and_apply Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -447,21 +498,3 @@ async def delete_segmentation_session(session_id: str):
     except Exception as e:
         logger.error(f"SAM3 delete session Error: {e}")
         return {"message": "Session cleanup attempted"}
-
-
-@router.get("/segment/2d/download/{session_id}/{file_name}")
-async def download_segmentation_file(session_id: str, file_name: str):
-    """Proxy to SAM3 file download endpoint"""
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(f"{SAM3_API_URL}/download/{session_id}/{file_name}")
-            response.raise_for_status()
-            
-            return Response(
-                content=response.content,
-                media_type="image/png",
-                headers={"Content-Disposition": f'attachment; filename="{file_name}"'}
-            )
-    except Exception as e:
-        logger.error(f"SAM3 download Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))

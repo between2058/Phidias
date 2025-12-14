@@ -1,6 +1,6 @@
 import { ModelType } from "@/store/useAppStore";
 
-const API_BASE_URL = 'http://localhost:8000';
+export const API_BASE_URL = 'http://localhost:8000';
 
 interface GenerationResponse {
     status: string;
@@ -95,7 +95,7 @@ export const api = {
         pointLabels: number[] | null,
         usePreviousMask: boolean = false,
         multimaskOutput: boolean = true
-    ): Promise<{ masks: string[]; scores: number[]; best_mask: string }> => {
+    ): Promise<{ masks_base64: string[]; scores: number[]; best_mask_base64: string | null }> => {
         const formData = new FormData();
         formData.append('session_id', sessionId);
         if (pointCoords) formData.append('point_coords', JSON.stringify(pointCoords));
@@ -116,7 +116,7 @@ export const api = {
         pointCoords: number[][] | null,
         pointLabels: number[] | null,
         usePreviousMask: boolean = false
-    ): Promise<{ rgba_image: string; mask: string; score: number }> => {
+    ): Promise<{ rgba_base64: string | null; mask_base64: string | null; score: number }> => {
         const formData = new FormData();
         formData.append('session_id', sessionId);
         if (pointCoords) formData.append('point_coords', JSON.stringify(pointCoords));
