@@ -115,6 +115,21 @@ async def set_image(image: UploadFile = File(..., description="要分割的圖�
             pil_image = pil_image.convert('RGB')
             print(f"已將 {original_mode} 轉換為 RGB")
         
+        # 最終驗證：確保是 RGB
+        if pil_image.mode != 'RGB':
+            pil_image = pil_image.convert('RGB')
+            print(f"強制轉換為 RGB")
+        
+        # 驗證通道數
+        import numpy as np
+        img_array = np.array(pil_image)
+        print(f"最終圖片 shape: {img_array.shape}, mode: {pil_image.mode}")
+        if len(img_array.shape) == 3 and img_array.shape[2] == 4:
+            # 如果還是 4 通道，強制取前 3 個
+            img_array = img_array[:, :, :3]
+            pil_image = Image.fromarray(img_array)
+            print(f"強制移除 alpha 通道")
+        
         inference_state = processor.set_image(pil_image)
 
         # 儲存 inference_state
