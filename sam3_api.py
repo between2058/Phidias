@@ -101,6 +101,9 @@ async def set_image(image: UploadFile = File(..., description="要分割的圖�
 
         # 載入圖片並設定到處理器
         pil_image = Image.open(image_path)
+        # 確保圖片是 RGB 格式（SAM3 需要 3 通道）
+        if pil_image.mode != 'RGB':
+            pil_image = pil_image.convert('RGB')
         inference_state = processor.set_image(pil_image)
 
         # 儲存 inference_state
