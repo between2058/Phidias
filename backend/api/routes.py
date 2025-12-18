@@ -597,11 +597,11 @@ async def enhance_group(request: GroupRequest):
             model=request.model or "gpt-4o"
         )
         
-        # Check if result has 'groups' key (New format)
-        if isinstance(result, dict) and 'groups' in result:
-             return GroupResponse(groups=result['groups'])
-        
-        # Fallback / Legacy format
+        # Check if result has "groups" key (Flat list)
+        if isinstance(result, dict) and "groups" in result:
+             return GroupResponse(groups=result["groups"])
+             
+        # Fallback (Legacy/Recursive)
         return GroupResponse(hierarchy=result)
     except Exception as e:
         logger.error(f"Enhance Group Error: {e}")
