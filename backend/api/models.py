@@ -48,7 +48,7 @@ class TrellisMultiRequest(BaseModel):
 
 class RenameRequest(BaseModel):
     image: str # Base64
-    prompt: Optional[str] = "This is the Image of Bridge Crane. What is the name of this highlighted green object? Only reply with a short name using snake_case, e.g. wheel_front_left."
+    prompt: Optional[str] = "What is the name of this highlighted green object? Only reply with a short name using snake_case, e.g. wheel_front_left."
     api_url: Optional[str] = None
     api_key: Optional[str] = None
     model: Optional[str] = "gpt-4o"

@@ -130,6 +130,7 @@ function SelectionHighlighter({ scene, selectedIds }: { scene: THREE.Group, sele
 }
 
 import { SciFiLoader } from './SciFiLoader'
+import { SciFiEffects } from './SciFiEffects'
 
 // ... existing imports ...
 
@@ -139,8 +140,7 @@ import { api, base64ToBlob } from '@/services/api'
 import { Button } from '@/components/ui/button'
 
 export function Viewer3D() {
-    const { currentGlbUrl, isGenerating, setGlbUrl, scene: threeScene } = useAppStore()
-    const [isSegmenting, setSegmenting] = useState(false)
+    const { currentGlbUrl, isGenerating, setGlbUrl, scene: threeScene, isSegmenting, setSegmenting } = useAppStore()
 
     const handleSegmentation = async () => {
         if (!threeScene) return
@@ -209,6 +209,7 @@ export function Viewer3D() {
                             {currentGlbUrl && (
                                 <Center>
                                     <Model url={currentGlbUrl} />
+                                    <SciFiEffects />
                                 </Center>
                             )}
                         </Suspense>

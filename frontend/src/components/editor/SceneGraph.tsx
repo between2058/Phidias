@@ -21,10 +21,12 @@ import { findNodeByUuid } from "@/utils/scene"
 import * as THREE from 'three'
 
 export function SceneGraph() {
-    const { sceneGraph, selectedNodeIds, toggleNodeSelection, groupNodes, scene, gl, camera, updateNodeNames, aiSettings, hasRenamed, applyAutoGroup } = useAppStore()
+    const {
+        sceneGraph, selectedNodeIds, toggleNodeSelection, groupNodes, scene, gl, camera,
+        updateNodeNames, aiSettings, hasRenamed, applyAutoGroup,
+        isRenaming, setRenaming, isGrouping, setGrouping
+    } = useAppStore()
     const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-    const [isRenaming, setIsRenaming] = useState(false)
-    const [isGrouping, setIsGrouping] = useState(false)
     const [progress, setProgress] = useState(0)
     const [debugImage, setDebugImage] = useState<string | null>(null)
 
@@ -43,7 +45,7 @@ export function SceneGraph() {
 
     const handleAutoRename = async () => {
         if (!scene || !gl) return
-        setIsRenaming(true)
+        setRenaming(true)
         setProgress(0)
 
         // 1. Flatten nodes to iterate
@@ -93,13 +95,13 @@ export function SceneGraph() {
             updateNodeNames(updates)
         }
 
-        setIsRenaming(false)
+        setRenaming(false)
         setDebugImage(null)
     }
 
     const handleAutoGroup = async () => {
         if (!scene) return
-        setIsGrouping(true)
+        setGrouping(true)
 
         try {
             // Send current hierarchy to LLM
@@ -131,7 +133,7 @@ export function SceneGraph() {
         } catch (e) {
             console.error("Grouping error", e)
         } finally {
-            setIsGrouping(false)
+            setGrouping(false)
         }
     }
 

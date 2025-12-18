@@ -52,6 +52,13 @@ interface AppState {
     selectedNodeIds: string[]
     hasRenamed: boolean
 
+    isRenaming: boolean
+    isGrouping: boolean
+    isSegmenting: boolean
+    setRenaming: (isRenaming: boolean) => void
+    setGrouping: (isGrouping: boolean) => void
+    setSegmenting: (isSegmenting: boolean) => void
+
     // Three.js scene reference
     scene: THREE.Group | null
     gl: THREE.WebGLRenderer | null
@@ -127,6 +134,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     gl: null,
     camera: null,
     transformMode: 'translate',
+
+    isRenaming: false,
+    isGrouping: false,
+    isSegmenting: false,
+
+    setRenaming: (isRenaming) => set({ isRenaming }),
+    setGrouping: (isGrouping) => set({ isGrouping }),
+    setSegmenting: (isSegmenting) => set({ isSegmenting }),
 
     // Defaults
     generationParams: {
