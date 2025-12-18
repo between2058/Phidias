@@ -19,14 +19,14 @@ export const captureObjectSnapshot = (
     scene.background = new THREE.Color('#333333') // Neutral background
 
     // 2. Add Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.0) // Increased from 0.6
+    const ambientLight = new THREE.AmbientLight(0xffffff, 2.0)
     scene.add(ambientLight)
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5) // Increased from 1.0
+    const dirLight = new THREE.DirectionalLight(0xffffff, 4.0)
     dirLight.position.set(5, 5, 5)
     scene.add(dirLight)
 
-    const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.0) // Increased from 0.4
+    const dirLight2 = new THREE.DirectionalLight(0xffffff, 2.5)
     dirLight2.position.set(-5, -5, -5)
     scene.add(dirLight2)
 
@@ -99,14 +99,30 @@ export const captureObjectSnapshot = (
         const fov = camera.fov * (Math.PI / 180)
         let cameraZ = Math.abs(maxDim / 2 * Math.tan(fov * 2))
 
-        // Multiplier: 
-        // 1.0 = exact fit (border to border).
-        // 2.0 = some padding.
-        // We generally want a good look at the part, but seeing neighbors is key.
-        const distance = cameraZ * 2.5
+        const distance = cameraZ * 2.0
 
-        // We want a consistent viewing angle overlaying the context
-        const direction = new THREE.Vector3(1, 1, 1).normalize()
+        // Heuristic: Determine "Best View" based on aspect ratio
+        // If object is flat (one dim significantly smaller), look face-on.
+        const dims = [
+            { axis: 'x', val: size.x },
+            { axis: 'y', val: size.y },
+            { axis: 'z', val: size.z }
+        ].sort((a, b) => a.val - b.val)
+
+        let direction = new THREE.Vector3(1, 1, 1).normalize()
+
+        // If smallest dimension is < 25% of largest, it's likely a plate/panel.
+        if (dims[0].val < dims[2].val * 0.25) {
+            switch (dims[0].axis) {
+                case 'x': direction.set(1, 0.5, 0.5); break;
+                case 'y': direction.set(0.5, 1, 0.5); break;
+                case 'z': direction.set(0.5, 0.5, 1); break;
+            }
+        } else {
+            direction.set(1, 0.8, 1)
+        }
+
+        direction.normalize()
         const position = center.clone().add(direction.multiplyScalar(distance))
 
         camera.position.copy(position)

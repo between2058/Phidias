@@ -179,7 +179,7 @@ export const api = {
         return response.json();
     },
 
-    enhanceGroup: async (sceneGraph: any, prompt?: string, settings?: any): Promise<{ hierarchy: any }> => {
+    enhanceGroup: async (sceneGraph: any, prompt?: string, settings?: any): Promise<{ hierarchy?: any, groups?: any[] }> => {
         const body = {
             scene_graph: sceneGraph,
             prompt,

@@ -115,16 +115,18 @@ export function SceneGraph() {
 
             const result = await api.enhanceGroup(nodesToProcess, undefined, aiSettings)
 
-            // Result.hierarchy should be a nested JSON structure.
-            // We need to apply this structure.
-            console.log("Grouping Result:", result.hierarchy)
+            // Expecting result to have a "groups" key with list of groups
+            console.log("Grouping Result:", result)
 
-            if (result.hierarchy && result.hierarchy.hierarchy) {
-                applyAutoGroup(result.hierarchy.hierarchy)
-            } else if (Array.isArray(result.hierarchy)) {
+            if (result.groups && Array.isArray(result.groups)) {
+                applyAutoGroup(result.groups)
+            } else if (result.hierarchy && Array.isArray(result.hierarchy)) {
+                // Legacy or fallback support
                 applyAutoGroup(result.hierarchy)
+            } else if (Array.isArray(result)) {
+                applyAutoGroup(result)
             } else {
-                console.warn("Unexpected hierarchy format", result.hierarchy)
+                console.warn("Unexpected grouping format", result)
             }
         } catch (e) {
             console.error("Grouping error", e)
@@ -211,8 +213,8 @@ export function SceneGraph() {
                         size="sm"
                         className="flex-1 h-7 text-[10px]"
                         onClick={handleAutoGroup}
-                        disabled={isGrouping || !hasRenamed}
-                        title={!hasRenamed ? "Please run Auto Rename first" : "Auto Group"}
+                        disabled={isGrouping}
+                        title={isGrouping ? "Grouping..." : "Auto Group"}
                     >
                         {isGrouping ? (
                             <Loader2 className="w-3 h-3 animate-spin" />

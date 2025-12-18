@@ -589,14 +589,20 @@ async def enhance_group(request: GroupRequest):
     Calls LLM to group a list of parts into a hierarchy.
     """
     try:
-        hierarchy = await ai_service.call_llm_group(
+        result = await ai_service.call_llm_group(
             scene_graph_data=request.scene_graph,
             prompt=request.prompt,
             api_url=request.api_url,
             api_key=request.api_key,
             model=request.model or "gpt-4o"
         )
-        return GroupResponse(hierarchy=hierarchy)
+        
+        # Check if result has 'groups' key (New format)
+        if isinstance(result, dict) and 'groups' in result:
+             return GroupResponse(groups=result['groups'])
+        
+        # Fallback / Legacy format
+        return GroupResponse(hierarchy=result)
     except Exception as e:
         logger.error(f"Enhance Group Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

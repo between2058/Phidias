@@ -3,7 +3,7 @@ import httpx
 import logging
 import base64
 import json
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Any
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -95,7 +95,7 @@ class AIService:
 
     async def call_llm_group(
         self, 
-        scene_graph_data: Dict, 
+        scene_graph_data: Any, 
         prompt: str,
         api_url: Optional[str] = None,
         api_key: Optional[str] = None,
@@ -109,6 +109,9 @@ class AIService:
         key = api_key if api_key else self.default_openai_key
         
         if not key: key = "dummy"
+
+        logger.info(f"LLM Data Type: {type(scene_graph_data)}")
+        logger.info(f"LLM Data Preview: {str(scene_graph_data)[:200]}...")
 
         endpoint = f"{base_url}/chat/completions"
         # Handle trailing slash or full path issues roughly
@@ -127,42 +130,31 @@ class AIService:
 
         system_prompt = """
         You are an expert 3D model organizer. 
-        Your task is to organize a flat list of 3D parts into a logical hierarchy.
-        
-        You MUST return a JSON object with a single key "hierarchy" containing a list of node objects.
-        Each node object MUST have:
-        - "name": string (the name of the group or part)
-        - "type": "Group" | "Mesh"
-        - "children": list of node objects (can be empty)
-        - "ids": list of strings (ONLY if type is Mesh, listing the UUIDs of the parts in this leaf node)
+        Your task is to organize a simplified list of 3D parts into logical groups based on their names.
 
-        Example structure:
+        INPUT FORMAT:
+        A list of objects: [{"id": "uuid", "name": "part_name"}, ...]
+
+        OUTPUT FORMAT:
+        Return a JSON object with a "groups" key containing a list of groups.
+        Each group MUST have:
+        - "name": string (Descriptive group name, e.g., "Wheels", "Body", "Interior")
+        - "ids": list of strings (The UUIDs of parts that belong to this group)
+
+        EXAMPLE OUTPUT:
         {
-            "hierarchy": [
-                {
-                    "name": "Car",
-                    "type": "Group",
-                    "children": [
-                        {
-                            "name": "Wheels",
-                            "type": "Group",
-                            "children": [
-                                { "name": "Wheel_FL", "type": "Mesh", "ids": ["uuid1"] },
-                                { "name": "Wheel_FR", "type": "Mesh", "ids": ["uuid2"] }
-                            ]
-                        },
-                        {
-                            "name": "Body",
-                            "type": "Mesh",
-                            "ids": ["uuid3", "uuid4"]
-                        }
-                    ]
-                }
+            "groups": [
+                { "name": "Wheels", "ids": ["uuid1", "uuid2", "uuid3", "uuid4"] },
+                { "name": "Body", "ids": ["uuid5", "uuid6"] }
             ]
         }
-        
-        Do not change the specific UUIDs provided in the input. Just organize them.
-        Return ONLY valid JSON.
+
+        RULES:
+        1. Every input ID must be assigned to exactly one group.
+        2. Do NOT invent new IDs. Use ONLY the IDs provided in the Input Data.
+        3. Do NOT return the example data. Process the Input Data provided below.
+        4. Group parts logically by their function or location (e.g. all tires together, all windows together).
+        5. Return ONLY valid JSON.
         """
 
         payload = {
@@ -171,7 +163,7 @@ class AIService:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"{prompt}\n\nData:\n{json.dumps(scene_graph_data)}"}
             ],
-            "response_format": {"type": "json_object"}
+            # "response_format": {"type": "json_object"} # Removed for broader compatibility with Llama/vLLM
         }
 
         try:
@@ -186,14 +178,37 @@ class AIService:
                 data = response.json()
                 content = data['choices'][0]['message']['content']
                 
-                # Parse JSON
+                data = response.json()
+                content = data['choices'][0]['message']['content']
+                logger.info(f"LLM Response Content: {content}")
+                
+                # Parse JSON Robustly
                 try:
+                    # 1. Try direct parse
                     return json.loads(content)
                 except json.JSONDecodeError:
-                    # Fallback to simple extraction if markdown ticks included
-                    if "```json" in content:
-                        content = content.split("```json")[1].split("```")[0]
-                        return json.loads(content)
+                    # 2. Extract from markdown blocks
+                    if "```" in content:
+                        # Find the first block that looks like it contains our data
+                        import re
+                        matches = re.findall(r"```(?:json)?(.*?)```", content, re.DOTALL)
+                        for match in matches:
+                            try:
+                                return json.loads(match.strip())
+                            except:
+                                continue
+                    
+                    # 3. Last ditch: Extract substring from first { to last }
+                    try:
+                        start_idx = content.find('{')
+                        end_idx = content.rfind('}')
+                        if start_idx != -1 and end_idx != -1:
+                            json_str = content[start_idx : end_idx + 1]
+                            return json.loads(json_str)
+                    except:
+                        pass
+                        
+                    logger.error(f"Failed to parse JSON from: {content}")
                     raise
                 
         except Exception as e:

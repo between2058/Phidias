@@ -286,9 +286,36 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
     },
     setHasRenamed: (hasRenamed) => set({ hasRenamed }),
-    applyAutoGroup: (hierarchy) => {
+    applyAutoGroup: (data) => {
         const { scene } = get()
         if (!scene) return
+
+        // 1. Handle Flat Groups List (New method)
+        if (Array.isArray(data)) {
+            // Data is [{name: "Group Name", ids: ["uuid1", ...]}]
+            data.forEach((groupData: any) => {
+                if (groupData.name && Array.isArray(groupData.ids)) {
+                    // Create Group
+                    const group = new THREE.Group()
+                    group.name = groupData.name
+                    scene.add(group)
+
+                    // Move parts into group
+                    groupData.ids.forEach((id: string) => {
+                        const obj = findNodeByUuid(scene, id)
+                        if (obj) {
+                            group.add(obj)
+                        }
+                    })
+                }
+            })
+            set({ sceneGraph: scene.children.map(parseSceneGraph) })
+            return
+        }
+
+        // 2. Handle Recursive Hierarchy (Legacy/Fallback)
+        const hierarchy = Array.isArray(data) ? data : (data as any).hierarchy
+        if (!hierarchy) return
 
         // Helper to process nodes recursively
         const processNode = (nodeData: any, parent: THREE.Object3D) => {
@@ -325,18 +352,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             }
         }
 
-        // We apply changes to the current scene.
-        // Ideally we should start with a clean slate at the top level to avoid duplicates,
-        // but 'add' moves them.
-        // We iterate the new hierarchy and attach to scene (or a new root?).
-        // Let's attach to the scene root.
-
-        // Strategy: 
-        // 1. Create a temporary container to hold the new structure? 
-        //    Or just modify the scene directly. If we move a node, it leaves its old parent.
-        // 2. Iterate top level nodes
-
-        hierarchy.forEach(node => processNode(node, scene))
+        if (Array.isArray(hierarchy)) {
+            hierarchy.forEach(node => processNode(node, scene))
+        }
 
         // Trigger update
         set({ sceneGraph: scene.children.map(parseSceneGraph) })

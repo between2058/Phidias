@@ -57,11 +57,12 @@ class RenameResponse(BaseModel):
     name: str
 
 class GroupRequest(BaseModel):
-    scene_graph: Dict # JSON structure of the scene graph or relevant list
+    scene_graph: Any # JSON structure of the scene graph or relevant list
     prompt: Optional[str] = "Group these parts logically."
     api_url: Optional[str] = None
     api_key: Optional[str] = None
     model: Optional[str] = "gpt-4o"
 
 class GroupResponse(BaseModel):
-    hierarchy: Dict # New hierarchy structure
+    hierarchy: Optional[Dict] = None # Legacy/Recursive
+    groups: Optional[List[Dict[str, Any]]] = None # Flat list of groups
