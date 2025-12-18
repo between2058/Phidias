@@ -10,6 +10,9 @@ interface GenerationResponse {
     // For segmentation
     mask_url?: string;
     parts?: any[];
+    // For Rename/Group
+    name?: string;
+    hierarchy?: any;
 }
 
 export const api = {
@@ -156,6 +159,42 @@ export const api = {
         await fetch(`${API_BASE_URL}/segment/2d/session/${sessionId}`, {
             method: 'DELETE',
         });
+    },
+
+    enhanceRename: async (image: string, prompt?: string, settings?: any): Promise<{ name: string }> => {
+        const body = {
+            image,
+            prompt,
+            api_url: settings?.vlmBaseUrl,
+            api_key: settings?.vlmApiKey,
+            model: settings?.vlmModel
+        }
+
+        const response = await fetch(`${API_BASE_URL}/enhance/rename`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error('Rename failed');
+        return response.json();
+    },
+
+    enhanceGroup: async (sceneGraph: any, prompt?: string, settings?: any): Promise<{ hierarchy: any }> => {
+        const body = {
+            scene_graph: sceneGraph,
+            prompt,
+            api_url: settings?.llmBaseUrl,
+            api_key: settings?.llmApiKey,
+            model: settings?.llmModel
+        }
+
+        const response = await fetch(`${API_BASE_URL}/enhance/group`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error('Group failed');
+        return response.json();
     }
 };
 

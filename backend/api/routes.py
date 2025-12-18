@@ -2,13 +2,17 @@ from fastapi import APIRouter, HTTPException, Form, UploadFile, Response, File
 from .models import (
     GenerationRequest, GenerationResponse, 
     SegmentationRequest, SegmentationResponse,
-    TrellisMultiRequest
+    TrellisMultiRequest,
+    RenameRequest, RenameResponse,
+    GroupRequest, GroupResponse
 )
+from .ai_service import ai_service
 import base64
 import time
 import os
 import httpx
 import logging
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -35,7 +39,7 @@ def get_mock_glb_base64():
         with open(GLB_PATH, "rb") as f:
             return base64.b64encode(f.read()).decode('utf-8')
     except FileNotFoundError:
-        logger.warning(f"Mock GLB not found at {GLB_PATH}")
+        # logger.warning(f"Mock GLB not found at {GLB_PATH}")
         return base64.b64encode(b'\x67\x6C\x54\x46\x02\x00\x00\x00\x14\x00\x00\x00\x0C\x00\x00\x00\x4A\x53\x4F\x4E\x7B\x7D\x20\x20').decode('utf-8')
 
 import io
@@ -560,3 +564,39 @@ async def delete_segmentation_session(session_id: str):
     except Exception as e:
         logger.error(f"SAM3 delete session Error: {e}")
         return {"message": "Session cleanup attempted"}
+
+@router.post("/enhance/rename", response_model=RenameResponse)
+async def enhance_rename(request: RenameRequest):
+    """
+    Calls VLM to identify and rename a 3D part based on its snapshot.
+    """
+    try:
+        name = await ai_service.call_vlm_rename(
+            image_b64=request.image, 
+            prompt=request.prompt,
+            api_url=request.api_url,
+            api_key=request.api_key,
+            model=request.model or "gpt-4o"
+        )
+        return RenameResponse(name=name)
+    except Exception as e:
+        logger.error(f"Enhance Rename Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/enhance/group", response_model=GroupResponse)
+async def enhance_group(request: GroupRequest):
+    """
+    Calls LLM to group a list of parts into a hierarchy.
+    """
+    try:
+        hierarchy = await ai_service.call_llm_group(
+            scene_graph_data=request.scene_graph,
+            prompt=request.prompt,
+            api_url=request.api_url,
+            api_key=request.api_key,
+            model=request.model or "gpt-4o"
+        )
+        return GroupResponse(hierarchy=hierarchy)
+    except Exception as e:
+        logger.error(f"Enhance Group Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

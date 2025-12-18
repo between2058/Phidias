@@ -1,6 +1,6 @@
 'use client'
 
-import { Canvas, useGraph } from '@react-three/fiber'
+import { Canvas, useGraph, useThree } from '@react-three/fiber'
 import { OrbitControls, Environment, Grid, Center, useGLTF, Outlines } from '@react-three/drei'
 import { useAppStore, SceneNode } from '@/store/useAppStore'
 import { Suspense, useEffect, useMemo, useState } from 'react'
@@ -8,13 +8,15 @@ import * as THREE from 'three'
 
 function Model({ url }: { url: string }) {
     const { scene } = useGLTF(url)
-    const { setThreeScene, selectedNodeIds, toggleNodeSelection } = useAppStore()
+    const { setThreeScene, setThreeContext, selectedNodeIds, toggleNodeSelection } = useAppStore()
+    const { gl, camera } = useThree()
     const [hovered, setHover] = useState<string | null>(null)
 
     // Pass scene reference to store
     useEffect(() => {
         setThreeScene(scene)
-    }, [scene, setThreeScene])
+        setThreeContext(gl, camera)
+    }, [scene, gl, camera, setThreeScene, setThreeContext])
 
     // Memoize selection material or outline logic
     // For MVP, we will traverse and clone materials or use Outlines component on selected meshes

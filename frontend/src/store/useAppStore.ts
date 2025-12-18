@@ -33,6 +33,15 @@ export interface SceneNode {
     children?: SceneNode[]
 }
 
+export interface AISettings {
+    vlmBaseUrl: string
+    vlmApiKey: string
+    vlmModel: string
+    llmBaseUrl: string
+    llmApiKey: string
+    llmModel: string
+}
+
 interface AppState {
     selectedModel: ModelType
     messages: Message[]
@@ -41,9 +50,12 @@ interface AppState {
 
     sceneGraph: SceneNode[]
     selectedNodeIds: string[]
+    hasRenamed: boolean
 
     // Three.js scene reference
     scene: THREE.Group | null
+    gl: THREE.WebGLRenderer | null
+    camera: THREE.Camera | null
 
     // Transform State
     transformMode: 'translate' | 'rotate' | 'scale'
@@ -59,6 +71,7 @@ interface AppState {
 
     // Editor Actions
     setThreeScene: (scene: THREE.Group) => void
+    setThreeContext: (gl: THREE.WebGLRenderer, camera: THREE.Camera) => void
     renameNode: (id: string, newName: string) => void
     groupNodes: (ids: string[]) => void
     reparentNode: (childId: string, parentId: string) => void
@@ -90,6 +103,15 @@ interface AppState {
     clearAttachments: () => void
 
     setTransformMode: (mode: 'translate' | 'rotate' | 'scale') => void
+
+    // AI Settings
+    aiSettings: AISettings
+    setAiSettings: (settings: AISettings) => void
+
+    // Auto Rename/Group Actions
+    updateNodeNames: (updates: { id: string, name: string }[]) => void
+    setHasRenamed: (hasRenamed: boolean) => void
+    applyAutoGroup: (hierarchy: any[]) => void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -100,7 +122,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     sceneGraph: [],
     selectedNodeIds: [],
+    hasRenamed: false,
     scene: null,
+    gl: null,
+    camera: null,
     transformMode: 'translate',
 
     // Defaults
@@ -148,6 +173,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ scene })
         set({ sceneGraph: scene.children.map(parseSceneGraph) })
     },
+
+    setThreeContext: (gl, camera) => set({ gl, camera }),
 
     renameNode: (id, newName) => {
         const { scene } = get()
@@ -226,5 +253,92 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
 
     addAttachment: (base64) => set((state) => ({ attachments: [...state.attachments, base64] })),
-    clearAttachments: () => set({ attachments: [] })
+    clearAttachments: () => set({ attachments: [] }),
+
+    aiSettings: {
+        // vlmBaseUrl: 'http://172.18.246.59:54188/v1',
+        // vlmApiKey: 'none',
+        // vlmModel: 'zai-org/GLM-4.6V-Flash',
+        vlmBaseUrl: 'http://172.18.212.157:31234/v1',
+        vlmApiKey: 'none',
+        vlmModel: 'gemma 3 12b',
+        llmBaseUrl: 'http://172.18.212.157:31199/v1',
+        llmApiKey: 'none',
+        llmModel: 'LLAMA 3.3 70B'
+    },
+    setAiSettings: (settings) => set({ aiSettings: settings }),
+
+    updateNodeNames: (updates) => {
+        const { scene } = get()
+        if (!scene) return
+
+        let updated = false
+        updates.forEach(({ id, name }) => {
+            const node = findNodeByUuid(scene, id)
+            if (node) {
+                node.name = name
+                updated = true
+            }
+        })
+
+        if (updated) {
+            set({ sceneGraph: scene.children.map(parseSceneGraph), hasRenamed: true })
+        }
+    },
+    setHasRenamed: (hasRenamed) => set({ hasRenamed }),
+    applyAutoGroup: (hierarchy) => {
+        const { scene } = get()
+        if (!scene) return
+
+        // Helper to process nodes recursively
+        const processNode = (nodeData: any, parent: THREE.Object3D) => {
+            if (nodeData.type === 'Group') {
+                // Create new group
+                const group = new THREE.Group()
+                group.name = nodeData.name
+                parent.add(group)
+
+                // Process children
+                if (nodeData.children && Array.isArray(nodeData.children)) {
+                    nodeData.children.forEach((child: any) => processNode(child, group))
+                }
+            } else if (nodeData.type === 'Mesh') {
+                if (nodeData.ids && Array.isArray(nodeData.ids)) {
+                    if (nodeData.ids.length === 1) {
+                        // Single mesh - find and move
+                        const mesh = findNodeByUuid(scene, nodeData.ids[0])
+                        if (mesh) {
+                            mesh.name = nodeData.name // Update name if LLM refined it
+                            parent.add(mesh)
+                        }
+                    } else if (nodeData.ids.length > 1) {
+                        // Multiple meshes in a 'Mesh' node? Treat as a group.
+                        const group = new THREE.Group()
+                        group.name = nodeData.name
+                        parent.add(group)
+                        nodeData.ids.forEach((id: string) => {
+                            const mesh = findNodeByUuid(scene, id)
+                            if (mesh) group.add(mesh)
+                        })
+                    }
+                }
+            }
+        }
+
+        // We apply changes to the current scene.
+        // Ideally we should start with a clean slate at the top level to avoid duplicates,
+        // but 'add' moves them.
+        // We iterate the new hierarchy and attach to scene (or a new root?).
+        // Let's attach to the scene root.
+
+        // Strategy: 
+        // 1. Create a temporary container to hold the new structure? 
+        //    Or just modify the scene directly. If we move a node, it leaves its old parent.
+        // 2. Iterate top level nodes
+
+        hierarchy.forEach(node => processNode(node, scene))
+
+        // Trigger update
+        set({ sceneGraph: scene.children.map(parseSceneGraph) })
+    }
 }))

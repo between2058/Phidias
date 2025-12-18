@@ -45,3 +45,23 @@ class TrellisMultiRequest(BaseModel):
     ss_guidance_strength: float = 7.5
     slat_sampling_steps: int = 12
     slat_guidance_strength: float = 3.0
+
+class RenameRequest(BaseModel):
+    image: str # Base64
+    prompt: Optional[str] = "This is the Image of Bridge Crane. What is the name of this highlighted green object? Only reply with a short name using snake_case, e.g. wheel_front_left."
+    api_url: Optional[str] = None
+    api_key: Optional[str] = None
+    model: Optional[str] = "gpt-4o"
+
+class RenameResponse(BaseModel):
+    name: str
+
+class GroupRequest(BaseModel):
+    scene_graph: Dict # JSON structure of the scene graph or relevant list
+    prompt: Optional[str] = "Group these parts logically."
+    api_url: Optional[str] = None
+    api_key: Optional[str] = None
+    model: Optional[str] = "gpt-4o"
+
+class GroupResponse(BaseModel):
+    hierarchy: Dict # New hierarchy structure
