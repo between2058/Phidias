@@ -58,7 +58,7 @@ const scanShader = {
     `
 }
 
-function ScanningEffect({ bounds }: { bounds: THREE.Box3 }) {
+function ScanningEffect({ bounds, label }: { bounds: THREE.Box3, label?: string }) {
     const meshRef = useRef<THREE.Mesh>(null)
     const materialRef = useRef<THREE.ShaderMaterial>(null)
 
@@ -81,17 +81,30 @@ function ScanningEffect({ bounds }: { bounds: THREE.Box3 }) {
     })
 
     return (
-        <mesh ref={meshRef} position={[0, (bounds.max.y + bounds.min.y) / 2, 0]}>
-            <cylinderGeometry args={[size[0] as number, size[0] as number, size[1] as number, 32, 1, true]} />
-            <shaderMaterial
-                ref={materialRef}
-                args={[scanShader]}
-                transparent
-                side={THREE.DoubleSide}
-                depthWrite={false}
-                blending={THREE.AdditiveBlending}
-            />
-        </mesh>
+        <group>
+            <mesh ref={meshRef} position={[0, (bounds.max.y + bounds.min.y) / 2, 0]}>
+                <cylinderGeometry args={[size[0] as number, size[0] as number, size[1] as number, 32, 1, true]} />
+                <shaderMaterial
+                    ref={materialRef}
+                    args={[scanShader]}
+                    transparent
+                    side={THREE.DoubleSide}
+                    depthWrite={false}
+                    blending={THREE.AdditiveBlending}
+                />
+            </mesh>
+            {label && (
+                <Text
+                    position={[0, bounds.max.y + 0.5, 0]}
+                    fontSize={0.25}
+                    color="#00f3ff"
+                    anchorX="center"
+                    anchorY="bottom"
+                >
+                    {label}
+                </Text>
+            )}
+        </group>
     )
 }
 
@@ -257,7 +270,7 @@ function ClusterField({ bounds }: { bounds: THREE.Box3 }) {
 }
 
 export function SciFiEffects() {
-    const { isSegmenting, isRenaming, isGrouping, scene } = useAppStore()
+    const { isSegmenting, isRenaming, isGrouping, isAnalyzing, scene } = useAppStore()
 
     const bounds = useMemo(() => {
         if (!scene) return new THREE.Box3(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1))
@@ -268,7 +281,8 @@ export function SciFiEffects() {
 
     return (
         <group>
-            {isSegmenting && <ScanningEffect bounds={bounds} />}
+            {isSegmenting && <ScanningEffect bounds={bounds} label="SEGMENTING..." />}
+            {isAnalyzing && <ScanningEffect bounds={bounds} label="ANALYZING STRUCTURE..." />}
             {isRenaming && <PointCloudScan bounds={bounds} />}
             {isGrouping && <ClusterField bounds={bounds} />}
         </group>

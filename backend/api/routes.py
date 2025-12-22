@@ -4,7 +4,9 @@ from .models import (
     SegmentationRequest, SegmentationResponse,
     TrellisMultiRequest,
     RenameRequest, RenameResponse,
-    GroupRequest, GroupResponse
+    GroupRequest, GroupResponse,
+    AnalyzeRequest, AnalyzeResponse,
+    ClassifyRequest, ClassifyResponse
 )
 from .ai_service import ai_service
 import base64
@@ -605,4 +607,40 @@ async def enhance_group(request: GroupRequest):
         return GroupResponse(hierarchy=result)
     except Exception as e:
         logger.error(f"Enhance Group Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/enhance/analyze", response_model=AnalyzeResponse)
+async def enhance_analyze(request: AnalyzeRequest):
+    """
+    Analyzes the model image to produce a list of part categories.
+    """
+    try:
+        categories = await ai_service.call_vlm_analyze(
+            image_b64=request.image,
+            object_name=request.object_name,
+            api_url=request.api_url,
+            api_key=request.api_key,
+            model=request.model or "gpt-4o"
+        )
+        return AnalyzeResponse(categories=categories)
+    except Exception as e:
+        logger.error(f"Enhance Analyze Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/enhance/classify", response_model=ClassifyResponse)
+async def enhance_classify(request: ClassifyRequest):
+    """
+    Classifies a part image into one of the provided categories.
+    """
+    try:
+        category = await ai_service.call_vlm_classify(
+            image_b64=request.image,
+            categories=request.categories,
+            api_url=request.api_url,
+            api_key=request.api_key,
+            model=request.model or "gpt-4o"
+        )
+        return ClassifyResponse(category=category)
+    except Exception as e:
+        logger.error(f"Enhance Classify Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

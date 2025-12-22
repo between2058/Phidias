@@ -4,13 +4,22 @@ import * as THREE from 'three'
  * Captures a snapshot of a specific 3D object within its context.
  * Uses a separate scene to avoid interfering with the main application scene.
  */
+interface SnapshotOptions {
+    width?: number
+    height?: number
+    highlight?: boolean
+    padding?: number
+    rotationY?: number // Optional Y-axis rotation in radians
+}
+
 export const captureObjectSnapshot = (
     object: THREE.Object3D,
     root: THREE.Object3D,
     renderer: THREE.WebGLRenderer,
-    width: number = 512,
-    height: number = 512
+    options: SnapshotOptions = {}
 ): string => {
+    const { width = 512, height = 512, highlight = true, padding = 2.0, rotationY = 0 } = options
+
     // 0. Mark the target object in the original scene so we can find it in the clone
     object.userData.__snapshotTarget = true
 
@@ -33,7 +42,7 @@ export const captureObjectSnapshot = (
     // 3. Clone the entire root to preserve context
     const rootClone = root.clone()
 
-    // 4. Find the target in the clone and Apply Highlight
+    // 4. Find the target in the clone
     let targetClone: THREE.Object3D | null = null
 
     rootClone.traverse((node) => {
@@ -42,40 +51,6 @@ export const captureObjectSnapshot = (
             node.userData.__snapshotTarget = false // Cleanup in clone
         }
     })
-
-    // Apply Green Highlight to Target
-    if (targetClone) {
-        (targetClone as THREE.Object3D).traverse((node) => {
-            if ((node as THREE.Mesh).isMesh) {
-                const mesh = node as THREE.Mesh
-                // Clone material to avoid side effects on shared materials
-                const originalMat = mesh.material
-                // Handle array of materials if necessary (uncommon for simple parts but possible)
-                if (Array.isArray(originalMat)) {
-                    mesh.material = originalMat.map(m => {
-                        const clone = m.clone()
-                        if ('emissive' in clone) {
-                            (clone as any).emissive.setHex(0x00ff00);
-                            (clone as any).emissiveIntensity = 0.5;
-                        } else {
-                            (clone as any).color.setHex(0x00ff00);
-                        }
-                        return clone
-                    })
-                } else {
-                    const clone = originalMat.clone()
-                    if ('emissive' in clone) {
-                        (clone as any).emissive.setHex(0x00ff00);
-                        (clone as any).emissiveIntensity = 0.5;
-                    } else {
-                        // Fallback for materials without emissive (e.g. Basic)
-                        (clone as any).color.setHex(0x00ff00);
-                    }
-                    mesh.material = clone
-                }
-            }
-        })
-    }
 
     // Cleanup marker in original
     object.userData.__snapshotTarget = false
@@ -99,10 +74,9 @@ export const captureObjectSnapshot = (
         const fov = camera.fov * (Math.PI / 180)
         let cameraZ = Math.abs(maxDim / 2 * Math.tan(fov * 2))
 
-        const distance = cameraZ * 2.0
+        const distance = cameraZ * padding
 
         // Heuristic: Determine "Best View" based on aspect ratio
-        // If object is flat (one dim significantly smaller), look face-on.
         const dims = [
             { axis: 'x', val: size.x },
             { axis: 'y', val: size.y },
@@ -123,46 +97,180 @@ export const captureObjectSnapshot = (
         }
 
         direction.normalize()
+
+        // Apply optional extra rotation
+        if (rotationY !== 0) {
+            direction.applyAxisAngle(new THREE.Vector3(0, 1, 0), rotationY)
+        }
+
         const position = center.clone().add(direction.multiplyScalar(distance))
 
         camera.position.copy(position)
         camera.lookAt(center)
     } else {
-        // Fallback if something failed (shouldn't happen)
         camera.position.set(2, 2, 2)
         camera.lookAt(0, 0, 0)
     }
 
-    // 7. Render
+    // 7. Render Pass 1: Beauty Pass (Original Materials)
     const renderTarget = new THREE.WebGLRenderTarget(width, height)
-    const originalSize = new THREE.Vector2()
-    renderer.getSize(originalSize)
-
     renderer.setRenderTarget(renderTarget)
     renderer.render(scene, camera)
 
-    // 8. Extract Image
-    const buffer = new Uint8Array(width * height * 4)
-    renderer.readRenderTargetPixels(renderTarget, 0, 0, width, height, buffer)
+    const beautyBuffer = new Uint8Array(width * height * 4)
+    renderer.readRenderTargetPixels(renderTarget, 0, 0, width, height, beautyBuffer)
 
+    // If highlight is disabled, we stop here
+    if (!highlight || !targetClone) {
+        // ... (cleanup and return beautyBuffer as image)
+        renderer.setRenderTarget(null)
+        renderTarget.dispose()
+
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+            const imageData = ctx.createImageData(width, height)
+            // Flip Y since WebGL is upside down relative to Canvas
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const srcIdx = (y * width + x) * 4
+                    const dstIdx = ((height - y - 1) * width + x) * 4
+                    imageData.data[dstIdx] = beautyBuffer[srcIdx]
+                    imageData.data[dstIdx + 1] = beautyBuffer[srcIdx + 1]
+                    imageData.data[dstIdx + 2] = beautyBuffer[srcIdx + 2]
+                    imageData.data[dstIdx + 3] = beautyBuffer[srcIdx + 3]
+                }
+            }
+            ctx.putImageData(imageData, 0, 0)
+        }
+        return canvas.toDataURL('image/png')
+    }
+
+    // 8. Render Pass 2: Mask Pass (Target White, Context Black)
+    // Override materials for mask
+    const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
+    const blackMat = new THREE.MeshBasicMaterial({ color: 0x000000 })
+
+    // Store originals? No need if we dispose scene after.
+    // Set everything to black first
+    const originalMaterials = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>()
+    rootClone.traverse((node: any) => {
+        if ((node as THREE.Mesh).isMesh) {
+            const mesh = node as THREE.Mesh
+            originalMaterials.set(mesh, mesh.material)
+            mesh.material = blackMat
+        }
+    })
+
+    // Set target to white
+    if (targetClone) {
+        (targetClone as THREE.Object3D).traverse((node: any) => {
+            if ((node as THREE.Mesh).isMesh) {
+                (node as THREE.Mesh).material = whiteMat
+            }
+        })
+    }
+
+    // Render Mask
+    renderer.render(scene, camera)
+    const maskBuffer = new Uint8Array(width * height * 4)
+    renderer.readRenderTargetPixels(renderTarget, 0, 0, width, height, maskBuffer)
+
+    // 9. Composite: Edge Detection and Red Outline
     const canvas = document.createElement('canvas')
     canvas.width = width
     canvas.height = height
     const ctx = canvas.getContext('2d')
     if (ctx) {
         const imageData = ctx.createImageData(width, height)
-        const inputData = buffer
         const outputData = imageData.data
 
+        // Flip and Composite
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
-                const srcIdx = (y * width + x) * 4
-                const dstIdx = ((height - y - 1) * width + x) * 4
+                // WebGL Y is inverted
+                const glY = y
+                const canvasY = height - y - 1
 
-                outputData[dstIdx] = inputData[srcIdx]
-                outputData[dstIdx + 1] = inputData[srcIdx + 1]
-                outputData[dstIdx + 2] = inputData[srcIdx + 2]
-                outputData[dstIdx + 3] = inputData[srcIdx + 3]
+                const idx = (glY * width + x) * 4
+                const outIdx = (canvasY * width + x) * 4
+
+                // Copy Beauty Pass as base
+                outputData[outIdx] = beautyBuffer[idx]
+                outputData[outIdx + 1] = beautyBuffer[idx + 1]
+                outputData[outIdx + 2] = beautyBuffer[idx + 2]
+                outputData[outIdx + 3] = beautyBuffer[idx + 3]
+
+                // Edge Detection on Mask
+                // Check if current pixel is non-black (target)
+                // Actually edge = boundary between Black and White.
+                // Simple dilation: If pixel is Black, check neighbors. If any neighbor is White, this is an edge. Draw Red.
+                // Or: If pixel is White, check neighbors. If any neighbor is Black, this is an edge. Draw Red.
+
+                // Let's use the second approach: Outline ON the target or ON the background? 
+                // Reference uses dilation ^ mask. 
+                // Mask pixels = White. 
+                // Dilation = Expand White area. 
+                // Dilation ^ Mask = The expanded area minus the original area = The OUTSIDE border.
+                // This draws the line just OUTSIDE the object.
+
+                // Check if current pixel is Black (Background/Context)
+                // Only consider mask red channel (since it is black/white)
+                const isMaskWhite = maskBuffer[idx] > 128
+
+                if (!isMaskWhite) {
+                    // Check neighbors (3x3 kernel)
+                    let hasWhiteNeighbor = false
+
+                    // Simple optional check for performance: skip if far from likely edges? No simple way.
+                    // Just check 4 neighbors for speed, or 8 for quality.
+                    // Note: Boundary checks needed
+
+                    const neighbors = [
+                        { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
+                        { dx: 0, dy: -1 }, { dx: 0, dy: 1 },
+                        // Diagonals for smoother circle
+                        { dx: -1, dy: -1 }, { dx: 1, dy: -1 },
+                        { dx: -1, dy: 1 }, { dx: 1, dy: 1 }
+                    ]
+
+                    for (const n of neighbors) {
+                        const ny = glY + n.dy
+                        const nx = x + n.dx
+
+                        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                            const nIdx = (ny * width + nx) * 4
+                            if (maskBuffer[nIdx] > 128) {
+                                hasWhiteNeighbor = true
+                                break
+                            }
+                        }
+                    }
+
+                    if (hasWhiteNeighbor) {
+                        // This is an edge pixel (on the outside)
+                        // Make it Red. To mimic the drawing of a circle/thick line:
+                        // We will set a 3x3 block around this pixel to red.
+                        // Be careful with bounds.
+
+                        for (let dy = -1; dy <= 1; dy++) {
+                            for (let dx = -1; dx <= 1; dx++) {
+                                const ry = canvasY + dy
+                                const rx = x + dx
+                                if (ry >= 0 && ry < height && rx >= 0 && rx < width) {
+                                    const rIdx = (ry * width + rx) * 4
+                                    // Only overwrite if not already red (optional optimization)
+                                    outputData[rIdx] = 255
+                                    outputData[rIdx + 1] = 0
+                                    outputData[rIdx + 2] = 0
+                                    outputData[rIdx + 3] = 255
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         ctx.putImageData(imageData, 0, 0)
@@ -171,8 +279,67 @@ export const captureObjectSnapshot = (
     // Cleanup
     renderer.setRenderTarget(null)
     renderTarget.dispose()
-    // No explicit material dispose needed for rootClone as we let GC handle it, 
-    // but the cloned highlighted materials will be lost to GC which is fine.
+
+    // Clean up materials if we were to re-use scene, but we discard `scene` and `rootClone`
+    // so just letting them go out of scope is fine.
+
+    return canvas.toDataURL('image/png')
+}
+
+/**
+ * Captures 4 snapshots of the object from different angles (0, 90, 180, 270 degrees)
+ * and stitches them into a single 2x2 grid image.
+ */
+/**
+ * Captures 4 snapshots of the object from different angles (0, 90, 180, 270 degrees)
+ * and stitches them into a single 2x2 grid image.
+ */
+export const captureMultiviewSnapshot = async (
+    object: THREE.Object3D,
+    root: THREE.Object3D,
+    renderer: THREE.WebGLRenderer,
+    options: SnapshotOptions = {}
+): Promise<string> => {
+    const { width = 512, height = 512 } = options
+
+    // Capture 4 views
+    const angles = [0, Math.PI / 2, Math.PI, Math.PI * 1.5]
+    const snapshots: HTMLImageElement[] = []
+
+    for (const angle of angles) {
+        // Use synchronous capture but we need to wait for image loading
+        // We can create a new options object for each rotation
+        const snapshotUrl = captureObjectSnapshot(object, root, renderer, { ...options, rotationY: angle })
+
+        const img = new Image()
+        img.src = snapshotUrl
+        await new Promise((resolve) => { img.onload = resolve })
+        snapshots.push(img)
+    }
+
+    // Stitch into 2x2 grid
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+
+    if (ctx) {
+        const w2 = width / 2
+        const h2 = height / 2
+
+        ctx.fillStyle = '#111'
+        ctx.fillRect(0, 0, width, height)
+
+        // Logical Order:
+        // TL (0) | TR (90)
+        // -------+--------
+        // BL (270)| BR (180) 
+
+        ctx.drawImage(snapshots[0], 0, 0, w2, h2)      // Top-Left: Front
+        ctx.drawImage(snapshots[1], w2, 0, w2, h2)     // Top-Right: Right
+        ctx.drawImage(snapshots[3], 0, h2, w2, h2)     // Bottom-Left: Left
+        ctx.drawImage(snapshots[2], w2, h2, w2, h2)    // Bottom-Right: Back
+    }
 
     return canvas.toDataURL('image/png')
 }

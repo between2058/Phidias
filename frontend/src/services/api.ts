@@ -195,6 +195,42 @@ export const api = {
         });
         if (!response.ok) throw new Error('Group failed');
         return response.json();
+    },
+
+    analyzeModel: async (image: string, objectName: string, settings?: any): Promise<{ categories: string[] }> => {
+        const body = {
+            image,
+            object_name: objectName,
+            api_url: settings?.vlmBaseUrl,
+            api_key: settings?.vlmApiKey,
+            model: settings?.vlmModel
+        }
+
+        const response = await fetch(`${API_BASE_URL}/enhance/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error('Analysis failed');
+        return response.json();
+    },
+
+    classifyPart: async (image: string, categories: string[], settings?: any): Promise<{ category: string }> => {
+        const body = {
+            image,
+            categories,
+            api_url: settings?.vlmBaseUrl,
+            api_key: settings?.vlmApiKey,
+            model: settings?.vlmModel
+        }
+
+        const response = await fetch(`${API_BASE_URL}/enhance/classify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error('Classification failed');
+        return response.json();
     }
 };
 

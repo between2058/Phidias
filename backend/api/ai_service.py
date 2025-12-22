@@ -93,6 +93,82 @@ class AIService:
             logger.error(f"VLM Exception: {e}")
             return "Unknown_Part"
 
+    async def call_vlm_analyze(
+        self,
+        image_b64: str,
+        object_name: str,
+        api_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        model: str = "gpt-4o"
+    ) -> List[str]:
+        """
+        Analyzes the image and returns a list of potential parts (categories).
+        """
+        prompt = f"""
+        Analyze this 2x2 grid of images showing a 3D model of a {object_name} from 4 different angles (Front, Right, Back, Left).
+        The image shows the object in its natural state (no highlights, close-up view).
+        Break it down into its constituent parts/components (e.g. for a Car: Wheels, Doors, Windows, Roof, Chassis).
+        Return purely a JSON list of strings representing these part categories.
+        Do not include "Background" or "Ground". Do not output single letters.
+        Example: ["Wheel", "Body", "Glass", "Interior"]
+        """
+        
+        # Reuse rename logic structure but with different processing
+        content = await self.call_vlm_rename(image_b64, prompt, api_url, api_key, model)
+        
+        try:
+            # Clean up content
+            if "```json" in content:
+                import re
+                match = re.search(r"```json(.*?)```", content, re.DOTALL)
+                if match:
+                    content = match.group(1)
+            elif "```" in content:
+                 content = content.split("```")[1]
+            
+            content = content.strip()
+            # If it wrapped in [ ], try parse
+            if content.startswith("[") and content.endswith("]"):
+                return json.loads(content)
+            
+            # Fallback split
+            return [x.strip() for x in content.replace("[", "").replace("]", "").replace('"', "").split(",")]
+        except:
+            logger.error(f"Failed to parse analysis result: {content}")
+            return ["Main"]
+
+    async def call_vlm_classify(
+        self,
+        image_b64: str,
+        categories: List[str],
+        api_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        model: str = "gpt-4o"
+    ) -> str:
+        """
+        Classifies the highlighted part in the image into one of the provided categories.
+        """
+        cats_str = ", ".join(categories)
+        prompt = f"""
+        Look at the object highlighted with a RED OUTLINE in this 2x2 grid of images (showing 4 different view angles).
+        Classify it into EXACTLY one of the following categories: [{cats_str}].
+        If it doesn't fit well, pick the closest one or "Misc".
+        Reply ONLY with the category name. Do not explain.
+        """
+        
+        result = await self.call_vlm_rename(image_b64, prompt, api_url, api_key, model)
+        
+        # Simple cleanup
+        result = result.strip().replace('"', '').replace('.', '')
+        
+        # Validation (fuzzy match could be added here)
+        for cat in categories:
+            if cat.lower() in result.lower():
+                return cat
+        
+        return result 
+            
+            
     async def call_llm_group(
         self, 
         scene_graph_data: Any, 

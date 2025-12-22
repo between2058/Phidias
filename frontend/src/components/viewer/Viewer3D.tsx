@@ -140,7 +140,7 @@ import { api, base64ToBlob } from '@/services/api'
 import { Button } from '@/components/ui/button'
 
 export function Viewer3D() {
-    const { currentGlbUrl, isGenerating, setGlbUrl, scene: threeScene, isSegmenting, setSegmenting } = useAppStore()
+    const { currentGlbUrl, isGenerating, setGlbUrl, scene: threeScene, isSegmenting, setSegmenting, debugImage } = useAppStore()
 
     const handleSegmentation = async () => {
         if (!threeScene) return
@@ -237,6 +237,15 @@ export function Viewer3D() {
                     >
                         {isSegmenting ? <Loader2 className="w-4 h-4 animate-spin text-blue-400" /> : <Wand2 className="w-4 h-4" />}
                     </Button>
+                </div>
+            )}
+
+            {/* Vision Input Preview (Bottom Left) */}
+            {debugImage && (
+                <div className="absolute bottom-4 left-4 p-2 bg-black/80 border border-white/20 rounded max-w-[200px] z-50 pointer-events-none backdrop-blur-md">
+                    <p className="text-[10px] text-[#00f3ff] mb-1 font-mono uppercase tracking-wider">AI Vision Input</p>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={debugImage} className="w-full h-auto rounded border border-white/10" />
                 </div>
             )}
 

@@ -55,9 +55,13 @@ interface AppState {
     isRenaming: boolean
     isGrouping: boolean
     isSegmenting: boolean
+    isAnalyzing: boolean
+    debugImage: string | null
     setRenaming: (isRenaming: boolean) => void
     setGrouping: (isGrouping: boolean) => void
     setSegmenting: (isSegmenting: boolean) => void
+    setAnalyzing: (isAnalyzing: boolean) => void
+    setDebugImage: (image: string | null) => void
 
     // Three.js scene reference
     scene: THREE.Group | null
@@ -138,10 +142,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     isRenaming: false,
     isGrouping: false,
     isSegmenting: false,
+    isAnalyzing: false,
+    debugImage: null,
 
     setRenaming: (isRenaming) => set({ isRenaming }),
     setGrouping: (isGrouping) => set({ isGrouping }),
     setSegmenting: (isSegmenting) => set({ isSegmenting }),
+    setAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
+    setDebugImage: (debugImage) => set({ debugImage }),
 
     // Defaults
     generationParams: {

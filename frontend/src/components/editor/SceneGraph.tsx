@@ -13,10 +13,18 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
 import { exportGLB, exportUSDZ } from "@/utils/exporters"
 import { SettingsModal } from "@/components/ui/SettingsModal"
 import { api } from "@/services/api"
-import { captureObjectSnapshot } from "@/utils/snapshot"
+import { captureObjectSnapshot, captureMultiviewSnapshot } from "@/utils/snapshot"
 import { findNodeByUuid } from "@/utils/scene"
 import * as THREE from 'three'
 
@@ -24,11 +32,15 @@ export function SceneGraph() {
     const {
         sceneGraph, selectedNodeIds, toggleNodeSelection, groupNodes, scene, gl, camera,
         updateNodeNames, aiSettings, hasRenamed, applyAutoGroup,
-        isRenaming, setRenaming, isGrouping, setGrouping
+        isRenaming, setRenaming, isGrouping, setGrouping, isAnalyzing, setAnalyzing,
+        setDebugImage
     } = useAppStore()
     const [isSettingsOpen, setIsSettingsOpen] = useState(false)
     const [progress, setProgress] = useState(0)
-    const [debugImage, setDebugImage] = useState<string | null>(null)
+
+    // Smart Organize State
+    const [isSmartOrganizeOpen, setIsSmartOrganizeOpen] = useState(false)
+    const [objectNameInput, setObjectNameInput] = useState("")
 
     const handleGroup = () => {
         if (selectedNodeIds.length < 1) return
@@ -43,97 +55,103 @@ export function SceneGraph() {
         if (scene) exportUSDZ(scene, 'phidias_model')
     }
 
-    const handleAutoRename = async () => {
-        if (!scene || !gl) return
-        setRenaming(true)
-        setProgress(0)
-
-        // 1. Flatten nodes to iterate
-        const nodesToProcess: SceneNode[] = []
-        const traverse = (nodes: SceneNode[]) => {
-            nodes.forEach(n => {
-                nodesToProcess.push(n)
-                if (n.children) traverse(n.children)
-            })
-        }
-        traverse(sceneGraph)
-
-        const total = nodesToProcess.length
-        let processed = 0
-        const updates: { id: string, name: string }[] = []
-
-        // 2. Process each node
-        for (const nodeData of nodesToProcess) {
-            const obj = findNodeByUuid(scene, nodeData.id)
-            if (obj && (obj as THREE.Mesh).isMesh) {
-                const snapshotUrl = captureObjectSnapshot(obj, scene, gl)
-                setDebugImage(snapshotUrl)
-
-                try {
-                    // Call VLM
-                    const result = await api.enhanceRename(snapshotUrl, undefined, aiSettings)
-                    if (result.name && !result.name.startsWith("Error")) {
-                        // Check for duplicates in current batch or existing names?
-                        // For now, let's just append index if duplicated in the update list
-                        let newName = result.name
-                        let counter = 1
-                        while (updates.some(u => u.name === newName)) {
-                            newName = `${result.name}_${counter++}`
-                        }
-                        updates.push({ id: nodeData.id, name: newName })
-                    }
-                } catch (e) {
-                    console.error("Rename error for", nodeData.name, e)
-                }
-                processed++
-                setProgress(Math.round((processed / total) * 100))
-            }
-        }
-
-        // 3. Update Store
-        if (updates.length > 0) {
-            updateNodeNames(updates)
-        }
-
-        setRenaming(false)
-        setDebugImage(null)
+    const handleOpenSmartOrganize = () => {
+        setIsSmartOrganizeOpen(true)
+        setObjectNameInput("3D Model") // Reset to default
     }
 
-    const handleAutoGroup = async () => {
+    const handleSmartOrganize = async () => {
         if (!scene) return
-        setGrouping(true)
+        setIsSmartOrganizeOpen(false) // Close dialog
 
         try {
-            // Send current hierarchy to LLM
-            // To save tokens, we might want to send a simplified list of {id, name, type}
-            const nodesToProcess: { id: string, name: string }[] = []
-            const traverse = (nodes: SceneNode[]) => {
-                nodes.forEach(n => {
-                    nodesToProcess.push({ id: n.id, name: n.name })
-                    if (n.children) traverse(n.children)
-                })
+            // STEP 1: Global Analysis
+            setAnalyzing(true)
+
+            // Capture whole scene for context
+            // No highlight, tighter framing (1.0) and Multiview for VLM analysis
+            const contextSnapshot = await captureMultiviewSnapshot(scene, scene, gl!, { highlight: false, padding: 1.0 })
+            setDebugImage(contextSnapshot)
+
+            // Ask VLM for categories
+            const { categories } = await api.analyzeModel(contextSnapshot, objectNameInput, aiSettings)
+            console.log("Identified Categories:", categories)
+
+            setAnalyzing(false)
+            setDebugImage(null)
+
+            // STEP 2: Classification & Renaming
+            setRenaming(true)
+
+            const meshes: THREE.Mesh[] = []
+            scene.traverse((child) => {
+                if ((child as THREE.Mesh).isMesh) {
+                    meshes.push(child as THREE.Mesh)
+                }
+            })
+
+            const classificationResults: { id: string, name: string, category: string }[] = []
+            const nameCounts: Record<string, number> = {}
+
+            // Process matches
+            for (const mesh of meshes) {
+                const box = new THREE.Box3().setFromObject(mesh)
+                if (box.isEmpty()) continue
+
+                // Use Multiview Snapshot for robust classification
+                // We keep highlight enabled (default)
+                const snapshot = await captureMultiviewSnapshot(mesh, scene, gl!)
+                setDebugImage(snapshot)
+
+                try {
+                    const { category } = await api.classifyPart(snapshot, categories, aiSettings)
+
+                    // Generate Name: Category_Index
+                    if (!nameCounts[category]) nameCounts[category] = 0
+                    nameCounts[category]++
+                    const newName = `${category}_${nameCounts[category]}`
+
+                    classificationResults.push({
+                        id: mesh.uuid,
+                        name: newName,
+                        category: category
+                    })
+                } catch (e) {
+                    console.error("Classification failed for mesh", mesh.uuid, e)
+                }
             }
-            traverse(sceneGraph)
 
-            const result = await api.enhanceGroup(nodesToProcess, undefined, aiSettings)
+            // Apply Renames
+            updateNodeNames(classificationResults.map(r => ({ id: r.id, name: r.name })))
 
-            // Expecting result to have a "groups" key with list of groups
-            console.log("Grouping Result:", result)
+            setRenaming(false)
+            setDebugImage(null)
 
-            if (result.groups && Array.isArray(result.groups)) {
-                applyAutoGroup(result.groups)
-            } else if (result.hierarchy && Array.isArray(result.hierarchy)) {
-                // Legacy or fallback support
-                applyAutoGroup(result.hierarchy)
-            } else if (Array.isArray(result)) {
-                applyAutoGroup(result)
-            } else {
-                console.warn("Unexpected grouping format", result)
-            }
-        } catch (e) {
-            console.error("Grouping error", e)
-        } finally {
+            // STEP 3: Grouping
+            setGrouping(true)
+
+            // Create Groups based on categories
+            const groupsMap: Record<string, string[]> = {}
+            classificationResults.forEach(r => {
+                if (!groupsMap[r.category]) groupsMap[r.category] = []
+                groupsMap[r.category].push(r.id)
+            })
+
+            const groupData = Object.entries(groupsMap).map(([name, ids]) => ({
+                name: `${name}s`, // Pluralize
+                ids: ids
+            }))
+
+            applyAutoGroup(groupData)
+
             setGrouping(false)
+
+        } catch (error) {
+            console.error("Smart Organize Failed:", error)
+            setAnalyzing(false)
+            setRenaming(false)
+            setGrouping(false)
+            setDebugImage(null)
         }
     }
 
@@ -201,42 +219,22 @@ export function SceneGraph() {
                         variant="secondary"
                         size="sm"
                         className="flex-1 h-7 text-[10px]"
-                        onClick={handleAutoRename}
-                        disabled={isRenaming}
+                        onClick={handleOpenSmartOrganize}
+                        disabled={isRenaming || isGrouping || isAnalyzing}
+                        title="Smart Organize (Analyze -> Rename -> Group)"
                     >
-                        {isRenaming ? (
-                            <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> {progress}%</>
+                        {isAnalyzing ? (
+                            <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing...</>
+                        ) : isRenaming ? (
+                            <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Renaming...</>
+                        ) : isGrouping ? (
+                            <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Grouping...</>
                         ) : (
-                            <><Wand2 className="w-3 h-3 mr-1" /> Auto Rename</>
-                        )}
-                    </Button>
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        className="flex-1 h-7 text-[10px]"
-                        onClick={handleAutoGroup}
-                        disabled={isGrouping}
-                        title={isGrouping ? "Grouping..." : "Auto Group"}
-                    >
-                        {isGrouping ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                            <><BrainCircuit className="w-3 h-3 mr-1" /> Auto Group</>
+                            <><Wand2 className="w-3 h-3 mr-1" /> Smart Organize</>
                         )}
                     </Button>
                 </div>
             </div>
-
-            {/* Debug Image Preview */}
-            {isRenaming && debugImage && (
-                <div className="p-2 border-b border-border/50 bg-muted/20 flex flex-col items-center gap-1">
-                    <span className="text-[10px] text-muted-foreground">Identifying...</span>
-                    <div className="relative w-24 h-24 border border-border rounded overflow-hidden bg-black/20">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={debugImage} alt="Debug" className="w-full h-full object-contain" />
-                    </div>
-                </div>
-            )}
 
             <ScrollArea className="flex-1 p-2">
                 <div className="flex flex-col gap-1">
@@ -253,6 +251,41 @@ export function SceneGraph() {
             </ScrollArea>
 
             <SettingsModal open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
+
+            <Dialog open={isSmartOrganizeOpen} onOpenChange={setIsSmartOrganizeOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Smart Organize</DialogTitle>
+                        <DialogDescription>
+                            Describe the object to help the AI identify its parts correctly.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <span className="text-right text-sm font-medium">Object Name</span>
+                            <Input
+                                id="object-name"
+                                value={objectNameInput}
+                                onChange={(e) => setObjectNameInput(e.target.value)}
+                                className="col-span-3"
+                                placeholder="e.g. Cyberpunk Car, Mech Warrior"
+                                autoFocus
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") handleSmartOrganize()
+                                }}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="secondary" onClick={() => setIsSmartOrganizeOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={handleSmartOrganize} disabled={!objectNameInput.trim()}>
+                            <Wand2 className="w-4 h-4 mr-2" /> Start Analysis
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

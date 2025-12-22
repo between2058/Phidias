@@ -66,3 +66,24 @@ class GroupRequest(BaseModel):
 class GroupResponse(BaseModel):
     hierarchy: Optional[Dict] = None # Legacy/Recursive
     groups: Optional[List[Dict[str, Any]]] = None # Flat list of groups
+
+class AnalyzeRequest(BaseModel):
+    image: str # Base64 of the whole model context
+    object_name: Optional[str] = "Object" # e.g. "Car", "Chair"
+    api_url: Optional[str] = None
+    api_key: Optional[str] = None
+    model: Optional[str] = "gpt-4o"
+
+class AnalyzeResponse(BaseModel):
+    categories: List[str]
+
+class ClassifyRequest(BaseModel):
+    image: str # Base64 of the specific part
+    categories: List[str]
+    api_url: Optional[str] = None
+    api_key: Optional[str] = None
+    model: Optional[str] = "gpt-4o"
+
+class ClassifyResponse(BaseModel):
+    category: str
+
