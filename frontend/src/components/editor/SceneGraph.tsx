@@ -3,7 +3,7 @@
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAppStore, SceneNode } from "@/store/useAppStore"
 import { cn } from "@/lib/utils"
-import { ChevronRight, ChevronDown, Box, Layers, FolderPlus, GripVertical, Pencil, Download, Wand2, BrainCircuit, Settings, Loader2, Ungroup, Merge } from "lucide-react"
+import { ChevronRight, ChevronDown, Box, Layers, FolderPlus, GripVertical, Pencil, Download, Wand2, BrainCircuit, Settings, Loader2, Ungroup, Merge, Move, RotateCw, Maximize } from "lucide-react"
 import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,7 +33,7 @@ export function SceneGraph() {
         sceneGraph, selectedNodeIds, toggleNodeSelection, groupNodes, scene, gl, camera,
         updateNodeNames, aiSettings, hasRenamed, applyAutoGroup,
         isRenaming, setRenaming, isGrouping, setGrouping, isAnalyzing, setAnalyzing,
-        setDebugImage, mergeNodes
+        setDebugImage, mergeNodes, transformMode, setTransformMode
     } = useAppStore()
     const [isSettingsOpen, setIsSettingsOpen] = useState(false)
     const [progress, setProgress] = useState(0)

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import * as THREE from 'three'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { parseSceneGraph, findNodeByUuid } from '@/utils/scene'
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
@@ -125,6 +126,13 @@ interface AppState {
     updateNodeNames: (updates: { id: string, name: string }[]) => void
     setHasRenamed: (hasRenamed: boolean) => void
     applyAutoGroup: (hierarchy: any[]) => void
+
+    // Undo/Redo
+    history: string[] // JSON strings
+    future: string[]
+    snapshot: () => void
+    undo: () => void
+    redo: () => void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -140,6 +148,82 @@ export const useAppStore = create<AppState>((set, get) => ({
     gl: null,
     camera: null,
     transformMode: 'translate',
+
+    history: [],
+    future: [],
+
+    snapshot: () => {
+        const { scene, history } = get()
+        if (!scene) return
+
+        // 1. Revert any highlights to original material to prevent baking green color into history
+        scene.traverse((obj) => {
+            if ((obj as THREE.Mesh).isMesh && obj.userData.__originalMaterial) {
+                const mesh = obj as THREE.Mesh
+                // temporarily save current material (highlight)
+                mesh.userData.__tempMaterial = mesh.material
+                mesh.material = mesh.userData.__originalMaterial
+            }
+        })
+
+        // 2. Save snapshot
+        const json = JSON.stringify(scene.toJSON())
+
+        // 3. Restore highlights
+        scene.traverse((obj) => {
+            if ((obj as THREE.Mesh).isMesh && obj.userData.__tempMaterial) {
+                const mesh = obj as THREE.Mesh
+                mesh.material = mesh.userData.__tempMaterial
+                delete mesh.userData.__tempMaterial
+            }
+        })
+
+        // Limit history size to 20
+        const newHistory = [...history, json]
+        if (newHistory.length > 20) newHistory.shift()
+
+        set({ history: newHistory, future: [] })
+    },
+
+    undo: () => {
+        const { history, future, scene } = get()
+        if (history.length === 0 || !scene) return
+
+        const previousState = history[history.length - 1]
+        const newHistory = history.slice(0, -1)
+
+        // Save current to future
+        const currentJson = JSON.stringify(scene.toJSON())
+        set({ history: newHistory, future: [currentJson, ...future] })
+
+        // Restore
+        const loader = new THREE.ObjectLoader()
+        const newScene = loader.parse(JSON.parse(previousState)) as THREE.Group
+
+        // Update both scene ref and scene graph
+        set({ scene: newScene })
+        set({ sceneGraph: newScene.children.map(parseSceneGraph) })
+    },
+
+    redo: () => {
+        const { history, future, scene } = get()
+        if (future.length === 0 || !scene) return
+
+        const nextState = future[0]
+        const newFuture = future.slice(1)
+
+        // Save current to history
+        const currentJson = JSON.stringify(scene.toJSON())
+        set({ history: [...history, currentJson], future: newFuture })
+
+        // Restore
+        const loader = new THREE.ObjectLoader()
+        const newScene = loader.parse(JSON.parse(nextState)) as THREE.Group
+
+        set({ scene: newScene })
+        set({ sceneGraph: newScene.children.map(parseSceneGraph) })
+    },
+
 
     isRenaming: false,
     isGrouping: false,

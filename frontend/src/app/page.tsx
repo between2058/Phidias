@@ -4,7 +4,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
 import { ChatInterface } from "@/components/chat/ChatInterface"
-import { Viewer3D } from "@/components/viewer/Viewer3D"
+import Viewer3D from "@/components/viewer/Viewer3D"
 import { SceneGraph } from "@/components/editor/SceneGraph"
 
 export default function Home() {
