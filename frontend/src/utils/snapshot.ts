@@ -10,6 +10,7 @@ interface SnapshotOptions {
     highlight?: boolean
     padding?: number
     rotationY?: number // Optional Y-axis rotation in radians
+    fixedDirection?: THREE.Vector3 // Optional fixed selection for camera direction (overrides best-view heuristic)
 }
 
 export const captureObjectSnapshot = (
@@ -18,7 +19,7 @@ export const captureObjectSnapshot = (
     renderer: THREE.WebGLRenderer,
     options: SnapshotOptions = {}
 ): string => {
-    const { width = 512, height = 512, highlight = true, padding = 2.0, rotationY = 0 } = options
+    const { width = 512, height = 512, highlight = true, padding = 2.0, rotationY = 0, fixedDirection } = options
 
     // 0. Mark the target object in the original scene so we can find it in the clone
     object.userData.__snapshotTarget = true
@@ -85,8 +86,10 @@ export const captureObjectSnapshot = (
 
         let direction = new THREE.Vector3(1, 1, 1).normalize()
 
-        // If smallest dimension is < 25% of largest, it's likely a plate/panel.
-        if (dims[0].val < dims[2].val * 0.25) {
+        if (fixedDirection) {
+            direction.copy(fixedDirection)
+        } else if (dims[0].val < dims[2].val * 0.25) {
+            // If smallest dimension is < 25% of largest, it's likely a plate/panel.
             switch (dims[0].axis) {
                 case 'x': direction.set(1, 0.5, 0.5); break;
                 case 'y': direction.set(0.5, 1, 0.5); break;
@@ -306,10 +309,23 @@ export const captureMultiviewSnapshot = async (
     const angles = [0, Math.PI / 2, Math.PI, Math.PI * 1.5]
     const snapshots: HTMLImageElement[] = []
 
+    // Use clear standard angles: Front, Right, Back, Left
+    // Use clear standard angles: Front, Right, Back, Left
+    // We will randomize the elevation (up/down) for each view to get more variety.
+
     for (const angle of angles) {
+        // Random elevation between -0.1 (slightly below) and 0.4 (above)
+        // This adds variety to the vertical perspective.
+        const randomY = (Math.random() * 0.5) - 0.1
+        const fixedDir = new THREE.Vector3(0, randomY, 1).normalize()
+
         // Use synchronous capture but we need to wait for image loading
         // We can create a new options object for each rotation
-        const snapshotUrl = captureObjectSnapshot(object, root, renderer, { ...options, rotationY: angle })
+        const snapshotUrl = captureObjectSnapshot(object, root, renderer, {
+            ...options,
+            rotationY: angle,
+            fixedDirection: fixedDir
+        })
 
         const img = new Image()
         img.src = snapshotUrl

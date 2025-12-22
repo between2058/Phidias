@@ -100,11 +100,15 @@ export function SceneGraph() {
 
                 // Use Multiview Snapshot for robust classification
                 // We keep highlight enabled (default)
-                const snapshot = await captureMultiviewSnapshot(mesh, scene, gl!)
+                // Use Multiview Snapshot for robust classification
+                // We keep highlight enabled (default)
+                // Reduce padding to 1.2 for a closer look
+                const snapshot = await captureMultiviewSnapshot(mesh, scene, gl!, { padding: 1.5 })
                 setDebugImage(snapshot)
 
                 try {
                     const { category } = await api.classifyPart(snapshot, categories, aiSettings)
+                    console.log(`[Smart Organize] Mesh ${mesh.uuid} classified as: ${category}`)
 
                     // Generate Name: Category_Index
                     if (!nameCounts[category]) nameCounts[category] = 0

@@ -117,24 +117,40 @@ class AIService:
         content = await self.call_vlm_rename(image_b64, prompt, api_url, api_key, model)
         
         try:
-            # Clean up content
-            if "```json" in content:
-                import re
-                match = re.search(r"```json(.*?)```", content, re.DOTALL)
-                if match:
-                    content = match.group(1)
-            elif "```" in content:
-                 content = content.split("```")[1]
-            
             content = content.strip()
-            # If it wrapped in [ ], try parse
-            if content.startswith("[") and content.endswith("]"):
-                return json.loads(content)
             
-            # Fallback split
-            return [x.strip() for x in content.replace("[", "").replace("]", "").replace('"', "").split(",")]
-        except:
-            logger.error(f"Failed to parse analysis result: {content}")
+            # 1. Try to find a JSON list pattern: ["...", "..."]
+            import re
+            json_match = re.search(r'\[.*?\]', content, re.DOTALL)
+            if json_match:
+                try:
+                    return [str(x).strip() for x in json.loads(json_match.group(0)) if str(x).strip()]
+                except:
+                    pass # Fallback to manual parsing if JSON load fails
+            
+            # 2. Manual Cleanup & Splitting
+            # Remove Markdown code blocks
+            clean_content = re.sub(r'```[a-z]*', '', content).replace('```', '')
+            
+            # Remove brackets and quotes
+            clean_content = clean_content.replace('[', '').replace(']', '').replace('"', '').replace("'", "")
+            
+            # Split and clean items
+            raw_items = clean_content.split(',')
+            cleaned_items = []
+            for item in raw_items:
+                # Remove common hallucinated prefixes/suffixes and whitespace
+                item = item.strip().lstrip('_').lstrip('-').strip()
+                if item:
+                    cleaned_items.append(item)
+            
+            if not cleaned_items:
+                return ["Main"] # Fallback if empty
+                
+            return cleaned_items
+
+        except Exception as e:
+            logger.error(f"Failed to parse analysis result: {content}, Error: {e}")
             return ["Main"]
 
     async def call_vlm_classify(
