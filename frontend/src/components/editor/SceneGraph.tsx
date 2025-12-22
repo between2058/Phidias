@@ -3,7 +3,7 @@
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAppStore, SceneNode } from "@/store/useAppStore"
 import { cn } from "@/lib/utils"
-import { ChevronRight, ChevronDown, Box, Layers, FolderPlus, GripVertical, Pencil, Download, Wand2, BrainCircuit, Settings, Loader2 } from "lucide-react"
+import { ChevronRight, ChevronDown, Box, Layers, FolderPlus, GripVertical, Pencil, Download, Wand2, BrainCircuit, Settings, Loader2, Ungroup, Merge } from "lucide-react"
 import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,7 +33,7 @@ export function SceneGraph() {
         sceneGraph, selectedNodeIds, toggleNodeSelection, groupNodes, scene, gl, camera,
         updateNodeNames, aiSettings, hasRenamed, applyAutoGroup,
         isRenaming, setRenaming, isGrouping, setGrouping, isAnalyzing, setAnalyzing,
-        setDebugImage
+        setDebugImage, mergeNodes
     } = useAppStore()
     const [isSettingsOpen, setIsSettingsOpen] = useState(false)
     const [progress, setProgress] = useState(0)
@@ -49,6 +49,11 @@ export function SceneGraph() {
 
     const handleExportGLB = () => {
         if (scene) exportGLB(scene, 'phidias_model')
+    }
+
+    const handleMerge = () => {
+        if (selectedNodeIds.length < 2) return
+        mergeNodes()
     }
 
     const handleExportUSDZ = () => {
@@ -185,6 +190,16 @@ export function SceneGraph() {
                             title="Group Selected"
                         >
                             <FolderPlus className="w-4 h-4" />
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={handleMerge}
+                            title="Merge Selected"
+                            disabled={selectedNodeIds.length < 2}
+                        >
+                            <Merge className="h-4 w-4" />
                         </Button>
                         <Button
                             variant="ghost"

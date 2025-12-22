@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import * as THREE from 'three'
 import { parseSceneGraph, findNodeByUuid } from '@/utils/scene'
+import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 export type ModelType = 'SAM1' | 'SAM-3D' | 'Trellis' | 'P3-SAM' | null
 
@@ -86,6 +87,7 @@ interface AppState {
     renameNode: (id: string, newName: string) => void
     groupNodes: (ids: string[]) => void
     reparentNode: (childId: string, parentId: string) => void
+    mergeNodes: () => void
     // Generation Params
     generationParams: {
         trellis: {
@@ -381,5 +383,73 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         // Trigger update
         set({ sceneGraph: scene.children.map(parseSceneGraph) })
+    },
+    mergeNodes: () => {
+        const { scene, selectedNodeIds } = get()
+        if (!scene || selectedNodeIds.length < 2) return
+
+        const meshesToMerge: THREE.Mesh[] = []
+        selectedNodeIds.forEach(id => {
+            const node = findNodeByUuid(scene, id)
+            if (node && (node as THREE.Mesh).isMesh) {
+                meshesToMerge.push(node as THREE.Mesh)
+            }
+        })
+
+        if (meshesToMerge.length < 2) return
+
+        // 1. Collect Geometries transformed to World Space
+        const geometries: THREE.BufferGeometry[] = []
+
+        // Use the material of the first mesh (preferring original if highlighted)
+        const firstMesh = meshesToMerge[0]
+        const firstMat = firstMesh.userData.__originalMaterial || firstMesh.material
+
+        meshesToMerge.forEach(mesh => {
+            // Clone geometry to avoid side effects
+            const geom = mesh.geometry.clone()
+
+            // Apply World Transform
+            mesh.updateMatrixWorld()
+            geom.applyMatrix4(mesh.matrixWorld)
+
+            geometries.push(geom)
+        })
+
+        try {
+            const mergedGeometry = BufferGeometryUtils.mergeGeometries(geometries, false)
+
+            if (!mergedGeometry) return
+
+            // 2. Create New Mesh
+            const newMesh = new THREE.Mesh(mergedGeometry, firstMat)
+            newMesh.name = `Merged_Part_${Date.now().toString().slice(-4)}`
+
+            // Re-center pivot to geometry center
+            newMesh.geometry.computeBoundingBox()
+            const center = new THREE.Vector3()
+            if (newMesh.geometry.boundingBox) {
+                newMesh.geometry.boundingBox.getCenter(center)
+                newMesh.geometry.center() // Moves geometry to local 0,0,0
+                newMesh.position.copy(center) // Moves mesh to world center
+            }
+
+            // 3. Add to Scene Root (or parent of first mesh?)
+            // Let's add to root for now to avoid hierarchy issues
+            scene.add(newMesh)
+
+            // 4. Remove old meshes
+            meshesToMerge.forEach(mesh => {
+                if (mesh.parent) mesh.parent.remove(mesh)
+                mesh.geometry.dispose()
+            })
+
+            // 5. Update Selection and Graph
+            set({ selectedNodeIds: [newMesh.uuid] })
+            set({ sceneGraph: scene.children.map(parseSceneGraph) })
+
+        } catch (e) {
+            console.error("Merge failed", e)
+        }
     }
 }))

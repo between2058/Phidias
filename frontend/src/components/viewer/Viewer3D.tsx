@@ -45,25 +45,6 @@ function Model({ url }: { url: string }) {
                 }}
             />
 
-            {/* Render outlines for selected objects */}
-            {selectedNodeIds.map(id => {
-                const obj = scene.getObjectByProperty('uuid', id)
-                if (obj && (obj as THREE.Mesh).isMesh) {
-                    return (
-                        <mesh key={id} geometry={(obj as THREE.Mesh).geometry} position={[0, 0, 0]} rotation={[0, 0, 0]} scale={[1, 1, 1]}>
-                            {/* We need to match the transform of the object. 
-                            However, the primitive is already in the scene. 
-                            A simpler way for MVP is to just rely on the selection state 
-                            and maybe change emission or use a Selection wrapper.
-                            For now, let's try a direct approach: Traverse and modify material emissions? 
-                            No, that's destructive. 
-                            Let's use a helper component to highlight.
-                        */}
-                        </mesh>
-                    )
-                }
-                return null
-            })}
             <SelectionHighlighter scene={scene} selectedIds={selectedNodeIds} />
         </group>
     )
@@ -84,12 +65,19 @@ function SelectionHighlighter({ scene, selectedIds }: { scene: THREE.Group, sele
         scene.traverse((obj) => {
             if ((obj as THREE.Mesh).isMesh) {
                 const mesh = obj as THREE.Mesh;
-                // Store original if not stored
-                if (!originalMaterials.has(mesh.uuid)) {
-                    originalMaterials.set(mesh.uuid, mesh.material);
+
+                // Store original material in userData if not already there
+                if (!mesh.userData.__originalMaterial) {
+                    mesh.userData.__originalMaterial = mesh.material;
                 }
 
                 const isSelected = selectedIds.includes(mesh.uuid);
+
+                // Reset to original before applying logic (idempotency)
+                if (mesh.userData.__originalMaterial) {
+                    mesh.material = mesh.userData.__originalMaterial;
+                }
+
                 if (isSelected) {
                     // Clone and make emissive
                     const originalMat = mesh.material;
@@ -100,26 +88,17 @@ function SelectionHighlighter({ scene, selectedIds }: { scene: THREE.Group, sele
                         (mat as any).emissiveIntensity = 0.5;
                     }
                     mesh.material = mat;
-                    modifiedMaterials.push(mat);
-                } else {
-                    // Restore
-                    if (originalMaterials.has(mesh.uuid)) {
-                        mesh.material = originalMaterials.get(mesh.uuid)!;
-                    }
                 }
             }
         })
 
+        // No cleanup needed for local map, but we should restore on unmount
         return () => {
-            // Cleanup cloned materials
-            modifiedMaterials.forEach(mat => mat.dispose());
-
-            // Restore all originals on unmount/change
             scene.traverse((obj) => {
                 if ((obj as THREE.Mesh).isMesh) {
                     const mesh = obj as THREE.Mesh;
-                    if (originalMaterials.has(mesh.uuid)) {
-                        mesh.material = originalMaterials.get(mesh.uuid)!;
+                    if (mesh.userData.__originalMaterial) {
+                        mesh.material = mesh.userData.__originalMaterial;
                     }
                 }
             });
